@@ -70,6 +70,18 @@ plt.tight_layout()
 
 <p align="center"><img src="img/sfa_example.png" height="600"/></p>
 
+## Available methods
+
+```python
+from tsdr.slowness import SFA, BioSFA
+from tsdr.autocorrelation import TICA, TMCA, CSA, TCCA_Stiefel, sPCA_dwt
+from tsdr.predictability import TLPC, PrCA, DiCCA
+from tsdr.determinism import DyCA, DMD
+from tsdr.nonstationarity import ASSA, SSAsir, SSAsave, SSAcor, WaSSAf, WaSSAr, BSSnonstat
+from tsdr.diffusion import DMcov, DIG
+from tsdr.latentvariable import LDS
+```
+
 <!-- ## Usage notes
 -
 -
