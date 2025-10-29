@@ -1,0 +1,30 @@
+[project]
+name = "tsdr"
+version = "0.1"
+authors = [
+    {name = "Kieran S Owens", email = "kowe6911@uni.sydney.edu.au"},
+]
+maintainers = [
+    {name = "Kieran S Owens", email = "kowe6911@uni.sydney.edu.au"},
+]
+description = "Time-series dimension reduction"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "numpy",
+    "scipy",
+    "scikit-learn",
+    "pywavelets",
+    "kneed"
+]
+
+[project.urls]
+"GitHub Repository (tsdr)" = "https://github.com/KieranOwens/tsdr"
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
