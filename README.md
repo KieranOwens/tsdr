@@ -44,7 +44,7 @@ import matplotlib.pyplot as plt
 # a sinusoid
 z = np.sin(np.linspace(0, 4*np.pi, 1000))
 # multichannel noise
-D = 10
+D = 5
 noise = np.random.normal(scale=1.0, size=((len(z), D-1)))
 # linear mixing
 A = scipy.stats.ortho_group.rvs(D, random_state=1)
