@@ -20,7 +20,7 @@ The <em>tsdr</em> package provides python implementations of TSDR methods from e
 
 If you use this software, please read and cite this open-access article:
 
-- &#x1F4D7; Owens & Fulcher [Time-series dimension reduction: a comprehensive review and conceptual unification of algorithms](url), _arXiv_ (In Preparation).
+- &#x1F4D7; Owens & Fulcher [Time-series dimension reduction: a comprehensive review and conceptual unification of algorithms]([url](https://www.techrxiv.org/users/999518/articles/1362320-time-series-dimension-reduction-a-comprehensive-review-and-conceptual-unification-of-algorithms)), _TechRxiv_ (In Preparation).
 
 
 ## Installation
