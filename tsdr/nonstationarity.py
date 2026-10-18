@@ -118,7 +118,7 @@ class ASSA():
         S = self._compute_S(Xw)
 
         # eigendecomposition of S
-        eigvals, eigvecs = np.linalg.eig(S)
+        eigvals, eigvecs = np.linalg.eigh(S)
         eigvecs_sorted = eigvecs[:,np.argsort(eigvals)]
 
         # eigenvalues
@@ -269,7 +269,7 @@ class SSAsir():
         Mm = self._compute_Mm(Xw)
 
         # eigendecomposition of S
-        eigvals, eigvecs = np.linalg.eig(Mm)
+        eigvals, eigvecs = np.linalg.eigh(Mm)
         eigvecs_sorted = eigvecs[:,np.argsort(eigvals)]
 
         # get linear transformation
@@ -417,7 +417,7 @@ class SSAsave():
         Mv = self._compute_Mv(Xw)
 
         # eigendecomposition of S
-        eigvals, eigvecs = np.linalg.eig(Mv)
+        eigvals, eigvecs = np.linalg.eigh(Mv)
         eigvecs_sorted = eigvecs[:,np.argsort(eigvals)]
 
         # get linear transformation
@@ -575,7 +575,7 @@ class SSAcor():
         Mtau = self._compute_Mtau(Xw)
 
         # eigendecomposition of S
-        eigvals, eigvecs = np.linalg.eig(Mtau)
+        eigvals, eigvecs = np.linalg.eigh(Mtau)
         eigvecs_sorted = eigvecs[:,np.argsort(eigvals)]
 
         # get linear transformation
@@ -777,7 +777,7 @@ class WaSSAf():
         S = self._compute_S(Xw)
 
         # eigendecomposition of S
-        eigvals, eigvecs = np.linalg.eig(S)
+        eigvals, eigvecs = np.linalg.eigh(S)
         eigvecs_sorted = eigvecs[:,np.argsort(eigvals)]
 
         # get linear transformation
@@ -937,7 +937,7 @@ class WaSSAr():
         S = self._compute_S(Xw)
 
         # eigendecomposition of S
-        eigvals, eigvecs = np.linalg.eig(S)
+        eigvals, eigvecs = np.linalg.eigh(S)
         eigvecs_sorted = eigvecs[:,np.argsort(eigvals)]
 
         # get linear transformation
@@ -1067,7 +1067,7 @@ class BSSnonstat():
         T, D = X0.shape
 
         # matrix used during optimisation
-        M = X0.T @ Xlag + Xlag.T @ X0
+        M = (X0.T @ Xlag + Xlag.T @ X0) / T
 
         # collect projection vectors
         W = []
@@ -1084,12 +1084,12 @@ class BSSnonstat():
                 e1 = np.zeros(shape=w.shape)
                 e2 = np.zeros(shape=w.shape)
 
-                for i in range(T - self.lag):
+                for i in range(T):
                     ztau = Xlag[i,:].reshape(-1,1)
                     zt = X0[i,:].reshape(-1,1)
 
-                    e1 += (zt @ w.T @ zt @ (w.T @ ztau)**2)/(T - self.lag)
-                    e2 += (ztau @ w.T @ ztau @ (w.T @ zt)**2) / (T - self.lag)
+                    e1 += (zt @ w.T @ zt @ (w.T @ ztau)**2)/T
+                    e2 += (ztau @ w.T @ ztau @ (w.T @ zt)**2) / T
 
                 w = e1 + e2 - 2*w - M @ w @ (w.T @ M @ w)
                 w = w / np.linalg.norm(w)

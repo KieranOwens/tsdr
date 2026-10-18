@@ -480,8 +480,9 @@ class CSA():
         The dimension (number of variables) of the time-series output.
         Default: 1.
 
-    lag: int
-        The maximum time lag at which to compute autocorrelation.
+    lag: int or list
+        The maximum time lag at which to compute autocorrelation,
+        or else a list of specified lags.
         Default: 1.
 
     method: str
@@ -497,13 +498,13 @@ class CSA():
         to the input time series X.
     """
 
-    def __init__(self, n_components=1, lags=2, max_iters=1000):
+    def __init__(self, n_components=1, lag=2, max_iters=1000):
 
         self.n_components = n_components
-        if isinstance(lags, int):
-            self.lags = range(1, lags+1)
-        elif isinstance(lags, list):
-            self.lags = lags
+        if isinstance(lag, int):
+            self.lags = range(1, lag+1)
+        elif isinstance(lag, list):
+            self.lags = list(lag)
         self.max_iters = max_iters
 
     def fit(self, X, y=None):
@@ -661,7 +662,7 @@ class sPCA_dwt():
 
     whiten: bool
         Whether to whiten the data.
-        Default: False.
+        Default: True
 
     method: str
         Whether to use PCA or SVD. Options: 'pca' or 'svd'.

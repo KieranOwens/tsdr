@@ -95,7 +95,7 @@ class TLPC():
         Sigma = Ctau @ np.linalg.pinv(C0)
 
         # eigendecomposition of I - Sigma^2
-        eigvals, eigvecs = np.linalg.eig(np.eye(Sigma.shape[0]) - Sigma @ Sigma)
+        eigvals, eigvecs = np.real(np.linalg.eig(np.eye(Sigma.shape[0]) - Sigma @ Sigma))
         eigvecs_sorted = eigvecs[:,np.argsort(eigvals)]
 
         # get linear transformation
@@ -244,18 +244,17 @@ class PrCA():
 
         else:
 
-            # (empty) time series of prediction errors (i.e., residuals)
-            E = np.zeros((T - (self.p + self.lag), D))
+            # prediction errors have T - (p + lag - 1) rows
+            E = np.zeros((T - (self.p + self.lag - 1), D))
 
-            # for each feature/variable
             for i in range(D):
 
                 # data to use for predictions
                 x = X[:,i]
-                x_p = self._tde(x[:-(self.lag+1)].reshape(-1,1), self.p, 1)
+                x_p = self._tde(x[:-self.lag].reshape(-1,1), self.p, 1)   # drop last `lag` points
 
                 # data to predict
-                y = x[self.p + self.lag:]
+                y = x[self.p - 1 + self.lag:]  
 
                 # fit a model using x_p and y
                 if self.model == 'linear_reg':
@@ -426,12 +425,11 @@ class DiCCA():
             # initialise AR weights beta
             beta = np.eye(self.s)[:,0]
 
-            # prediction (Ubeta) and prediction error (Utilde)
-            Ubeta = sum([U_list[i]*beta[i] for i in range(self.s)])
-            Utilde = Us - Ubeta
-
             # iteratively optimize transformation w and AR weights beta
             for _ in range(100):
+                # prediction (Ubeta) and prediction error (Utilde)
+                Ubeta = sum([U_list[i]*beta[i] for i in range(self.s)])
+                Utilde = Us - Ubeta
                 w = PCA().fit(Utilde).components_.T[:,-1]
                 t = U @ w
                 Ts = [beta[0] * U_list[0] @ w]

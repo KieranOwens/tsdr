@@ -156,12 +156,12 @@ class DMcov():
             Wnorm = D_neg_root @ W @ D_neg_root
 
             # eigendecomposition
-            _, eigvecs = np.linalg.eig(Wnorm)
+            _, eigvecs = np.linalg.eigh(Wnorm)
 
         else:
 
             # eigendecomposition
-            _, eigvecs = np.linalg.eig(D - W)
+            _, eigvecs = np.linalg.eigh(D - W)
 
         self.components = eigvecs[:,1:1+self.n_components]
 
@@ -292,8 +292,10 @@ class DIG():
         for i in range(D):
             for j in range(D):
                 if i != j:
-                    W[i,j] += 0.5*(np.exp(-G[i,j]/knn_k[i])**self.alpha)
-                    W[i,j] += 0.5*(np.exp(-G[i,j]/knn_k[j])**self.alpha)
+                    # W[i,j] += 0.5*(np.exp(-G[i,j]/knn_k[i])**self.alpha)
+                    # W[i,j] += 0.5*(np.exp(-G[i,j]/knn_k[j])**self.alpha)
+                    W[i,j] += 0.5*np.exp(-(G[i,j]/knn_k[i])**self.alpha)
+                    W[i,j] += 0.5*np.exp(-(G[i,j]/knn_k[j])**self.alpha)
 
         return W
     
@@ -311,7 +313,7 @@ class DIG():
 
         kneedle = KneeLocator(range(1, self.tmax + 1), vne, 
                             S=1.0, curve='convex', direction='decreasing')
-        return int(kneedle.elbow)
+        return int(kneedle.elbow) if kneedle.elbow is not None else self.tmax//2
     
     # computation of information distance
     def _information_distance(self, W):
@@ -332,7 +334,7 @@ class DIG():
 
         N = D.shape[0]
         H = np.eye(N) - np.ones((N, N)) / N
-        K = -0.5 * (H @ D @ H)
+        K = -0.5 * (H @ (D **2) @ H)
         eigenvals, eigenvecs = np.linalg.eigh(K)
         eigenvals_sorted = eigenvals.argsort()[::-1]
         idxs = eigenvals_sorted[:self.n_components]

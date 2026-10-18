@@ -140,6 +140,7 @@ class LDS():
 
         # Sum expectations over time
         sum_Exx = Exx.sum(axis=0)           # \sum_t E[x_t x_t^T]
+        sum_Exx0 = Exx[:-1].sum(axis=0)      # sum_{t=1}^{T-1}
         sum_Exx1 = Exx[1:].sum(axis=0)      # \sum_{t=2}^T E[x_t x_t^T]
         sum_Exxm1 = Exxm1.sum(axis=0)       # \sum_{t=2}^T E[x_t x_{t-1}^T]
 
@@ -147,11 +148,12 @@ class LDS():
         if self.constrain_A_identity:
             A = np.eye(d)
         else:
-            A = sum_Exxm1 @ pinv(sum_Exx1)
+            A = sum_Exxm1 @ pinv(sum_Exx0)
 
         # Update the latent state noise covariance matrix Q, Eq. (20)
         # and enforce symmetry
-        Q = (sum_Exx1 - A @ sum_Exxm1.T) / (T - 1)
+        #Q = (sum_Exx1 - A @ sum_Exxm1.T) / (T - 1)
+        Q = (sum_Exx1 - A @ sum_Exxm1.T - sum_Exxm1 @ A.T + A @ sum_Exx0 @ A.T) / (T - 1)
         Q = (Q + Q.T) / 2  
 
         # Update the output/Observation matrix C, Eq. (14)
