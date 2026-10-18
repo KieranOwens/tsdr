@@ -95,7 +95,7 @@ class TLPC():
         Sigma = Ctau @ np.linalg.pinv(C0)
 
         # eigendecomposition of I - Sigma^2
-        eigvals, eigvecs = np.real(np.linalg.eig(np.eye(Sigma.shape[0]) - Sigma @ Sigma))
+        eigvals, eigvecs = np.linalg.eig(np.eye(Sigma.shape[0]) - Sigma @ Sigma)
         eigvecs_sorted = eigvecs[:,np.argsort(eigvals)]
 
         # get linear transformation
