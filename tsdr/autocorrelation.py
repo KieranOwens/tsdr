@@ -16,6 +16,8 @@ from sklearn.decomposition import PCA
 from sklearn.exceptions import ConvergenceWarning
 import pywt
 
+from ._whitening import fit_whitening
+
 ###############################################################################
 ###############################################################################
 # TICA - Time-lagged Independent Component Analysis
@@ -81,7 +83,7 @@ class TICA():
         T, _ = X.shape
 
         # fit a PCA whitening model
-        pca_white = PCA(whiten=True).fit(X)
+        pca_white = fit_whitening(X)
 
         # whiten the data
         Xw = pca_white.transform(X)
@@ -206,7 +208,7 @@ class TMCA():
         T, _ = X.shape
 
         # fit a PCA whitening model
-        pca_white = PCA(whiten=True).fit(X)
+        pca_white = fit_whitening(X)
 
         # whiten the data
         Xw = pca_white.transform(X)
@@ -389,7 +391,7 @@ class TCCA_Stiefel:
 
         # Whiten the data if required
         if self.whiten:
-            pca_white = PCA(whiten=True).fit(X)
+            pca_white = fit_whitening(X)
             X = pca_white.transform(X)
 
         # Covariance matrices
@@ -556,7 +558,7 @@ class CSA():
         T, _ = X.shape
 
         # fit a PCA whitening model
-        pca_white = PCA(whiten=True).fit(X)
+        pca_white = fit_whitening(X)
 
         # whiten the data
         Xw = pca_white.transform(X)
@@ -727,7 +729,7 @@ class sPCA_dwt():
         # optional data whitening
         if self.whiten:
 
-            X = PCA(whiten=True).fit_transform(X)
+            X = fit_whitening(X).transform(X)
 
         # discrete wavelet transform
         dwt = pywt.dwt(X, self.wavelet, axis=0)[0]

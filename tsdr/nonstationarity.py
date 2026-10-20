@@ -14,6 +14,8 @@ import numpy as np
 import scipy
 from sklearn.decomposition import PCA
 
+from ._whitening import fit_whitening
+
 ###############################################################################
 ###############################################################################
 # ASSA - Analytic Stationary Subspace Analysis
@@ -109,7 +111,7 @@ class ASSA():
         """
 
         # fit a PCA whitening model
-        pca_white = PCA(whiten=True).fit(X)
+        pca_white = fit_whitening(X)
 
         # whiten the data
         Xw = pca_white.transform(X)
@@ -260,7 +262,7 @@ class SSAsir():
         """
 
         # fit a PCA whitening model
-        pca_white = PCA(whiten=True).fit(X)
+        pca_white = fit_whitening(X)
 
         # whiten the data
         Xw = pca_white.transform(X)
@@ -408,7 +410,7 @@ class SSAsave():
         """
 
         # fit a PCA whitening model
-        pca_white = PCA(whiten=True).fit(X)
+        pca_white = fit_whitening(X)
 
         # whiten the data
         Xw = pca_white.transform(X)
@@ -566,7 +568,7 @@ class SSAcor():
         """
 
         # fit a PCA whitening model
-        pca_white = PCA(whiten=True).fit(X)
+        pca_white = fit_whitening(X)
 
         # whiten the data
         Xw = pca_white.transform(X)
@@ -768,7 +770,7 @@ class WaSSAf():
         """
 
         # fit a PCA whitening model
-        pca_white = PCA(whiten=True).fit(X)
+        pca_white = fit_whitening(X)
 
         # whiten the data
         Xw = pca_white.transform(X)
@@ -928,7 +930,7 @@ class WaSSAr():
         """
 
         # fit a PCA whitening model
-        pca_white = PCA(whiten=True).fit(X)
+        pca_white = fit_whitening(X)
 
         # whiten the data
         Xw = pca_white.transform(X)
@@ -1057,7 +1059,7 @@ class BSSnonstat():
         """
 
         # fit a PCA whitening model
-        pca_white = PCA(whiten=True).fit(X)
+        pca_white = fit_whitening(X)
 
         # whiten the data
         Xw = pca_white.transform(X)

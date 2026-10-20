@@ -8,6 +8,8 @@ import numpy as np
 from scipy.linalg import pinv
 from sklearn.decomposition import PCA
 
+from ._whitening import fit_whitening
+
 ###############################################################################
 ###############################################################################
 # LDS - Latent linear dynamical system
@@ -199,7 +201,7 @@ class LDS():
 
         if self.whiten:
             # fit a PCA whitening model
-            self.pca_white = PCA(whiten=True).fit(Y)
+            self.pca_white = fit_whitening(Y)
 
             # whiten the data
             Y = self.pca_white.transform(Y)

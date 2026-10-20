@@ -10,6 +10,8 @@ import numpy as np
 import scipy
 from sklearn.decomposition import PCA
 
+from ._whitening import fit_whitening
+
 from sklearn.linear_model import LinearRegression
 from sklearn.kernel_ridge import KernelRidge
 
@@ -82,7 +84,7 @@ class TLPC():
         T, _ = X.shape
 
         # fit a PCA whitening model
-        pca_white = PCA(whiten=True).fit(X)
+        pca_white = fit_whitening(X)
 
         # whiten the data
         Xw = pca_white.transform(X)
@@ -299,7 +301,7 @@ class PrCA():
 
         # fit a PCA whitening model
         if self.whiten:
-            pca_white = PCA(whiten=True).fit(X)
+            pca_white = fit_whitening(X)
             X = pca_white.transform(X)
 
         # whiten the data
@@ -418,7 +420,7 @@ class DiCCA():
         """
 
         # whitening model and transformation
-        pca_white = PCA(whiten=True).fit(X)
+        pca_white = fit_whitening(X)
         Xw = pca_white.transform(X)
         transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
 
