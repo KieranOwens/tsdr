@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from sklearn.exceptions import ConvergenceWarning
 
-from tsdr.autocorrelation import TICA, TCCA_Stiefel
+from tsdr.autocorrelation import TICA, TCCA_Stiefel, sPCA_dwt
 
 from helpers import subspace_cos, random_mix, ar1
 
@@ -55,3 +55,15 @@ def test_tcca_stiefel_keeps_global_random_state(ar_sources):
         warnings.simplefilter("ignore", ConvergenceWarning)
         TCCA_Stiefel(n_components=1, seed=0).fit(X)
     assert np.random.rand() == expected
+
+
+@pytest.mark.parametrize("T", [1000, 1001])
+@pytest.mark.parametrize("method", ["pca", "svd"])
+@pytest.mark.parametrize("wavelet", ["db1", "db4"])
+def test_spca_dwt_output_length(T, method, wavelet):
+    rng = np.random.default_rng(0)
+    z = np.sin(np.linspace(0, 4 * np.pi, T))
+    X, _ = random_mix(np.column_stack([z, rng.normal(size=(T, 4))]), seed=0)
+    Y = sPCA_dwt(n_components=2, method=method, wavelet=wavelet).fit_transform(X)
+    assert Y.shape == (T, 2)
+    assert np.corrcoef(Y[:, 0], z)[0, 1] ** 2 > 0.99

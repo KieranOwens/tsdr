@@ -721,6 +721,9 @@ class sPCA_dwt():
             Returns self.
         """
 
+        # data length
+        T = X.shape[0]
+
         # optional data whitening
         if self.whiten:
 
@@ -748,6 +751,9 @@ class sPCA_dwt():
             # inverse discrete wavelet transform
             self.components = pywt.idwt(U[:,0:self.n_components], 
                                         cD=None, wavelet=self.wavelet, axis=0)
+
+        # the inverse DWT has an extra sample for odd T
+        self.components = self.components[:T]
 
         return self
 
