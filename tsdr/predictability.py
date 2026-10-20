@@ -409,14 +409,24 @@ class DiCCA():
         Xw = pca_white.transform(X)
         transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
 
+        # data dimensions
+        T, D = Xw.shape
+
+        # the deflated data are Xd = Xw @ deflation
+        Xd = Xw
+        deflation = np.eye(D)
+
         # collection projection vectors
         W = []
 
         # iteratively compute each linear transformation
         for nb in range(self.n_components):
 
-            # SVD
-            U, S, V = np.linalg.svd(Xw, full_matrices=False)
+            # SVD, Xd = U diag(S) V, dropping the null directions left by
+            # previous deflation steps
+            U, S, V = np.linalg.svd(Xd, full_matrices=False)
+            keep = S > S[0] * max(T, D) * np.finfo(float).eps
+            U, S, V = U[:,keep], S[keep], V[keep,:]
 
             # time-lagged matrices used for calculations
             Us = U[self.s:,:]
@@ -432,19 +442,24 @@ class DiCCA():
                 Utilde = Us - Ubeta
                 w = PCA().fit(Utilde).components_.T[:,-1]
                 t = U @ w
-                Ts = [beta[0] * U_list[0] @ w]
-                for i in range(1, self.s):
-                    Ts.append(Ts[-1] + beta[i] * U_list[i] @ w)
-                Ts = np.concatenate([t.reshape(-1,1) for t in Ts], axis=1)
+                # least-squares AR coefficients of the latent score t on its
+                # lagged values Ts = [t_{k-1}, ..., t_{k-s}] (Dong & Qin, 2018)
+                Ts = np.concatenate([(U_list[i] @ w).reshape(-1,1) 
+                                     for i in range(self.s)], axis=1)
                 beta = np.linalg.pinv(Ts.T @ Ts) @ Ts.T @ Us @ w
 
-            # obtain transformation via composition of PCA whitening, SVA, and w
-            W.append((transform1 @ V.T @ w).reshape(-1,1))
+            # weights r such that t = Xd @ r (since U = Xd V^T diag(1/S))
+            r = V.T @ (w / S)
 
-            # deflation step
+            # obtain transformation via composition of PCA whitening, 
+            # deflation, and r
+            W.append((transform1 @ deflation @ r).reshape(-1,1))
+
+            # deflation step, Xd <- Xd - t p^T = Xd (I - r p^T)
             if nb + 1 < self.n_components:
-                p = Xw.T @ t / (t.T @ t)
-                Xw = Xw - np.outer(t, p)
+                p = Xd.T @ t / (t.T @ t)
+                Xd = Xd - np.outer(t, p)
+                deflation = deflation @ (np.eye(D) - np.outer(r, p))
 
         self.linear_transform_ = np.concatenate(W, axis=1)
 
