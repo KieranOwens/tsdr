@@ -55,3 +55,15 @@ def dicca_ref(X, n_components, s, iters=200):
         Xd = Xd - np.outer(t, p)
     Wm, Pm = np.column_stack(Ws), np.column_stack(Ps)
     return Wwh @ Wm @ np.linalg.inv(Pm.T @ Wm)
+
+
+def tlpc_ref(X, n_components, lag=1):
+    """TLPC as the Gaussian information bottleneck between x_t and x_{t+lag}
+    (Creutzig & Sprekeler, 2008; Sprekeler 2008 thesis, eq. 6.22):
+    C_{x_t|x_{t+lag}} w = lambda C_{x_t} w, which in whitened coordinates is
+    (I - C_tau C_tau^T) w = lambda w."""
+    Xw, W, _ = whiten_ref(X)
+    T = len(Xw)
+    C = Xw[:-lag].T @ Xw[lag:] / (T - lag - 1)
+    lam, V = np.linalg.eigh(np.eye(X.shape[1]) - C @ C.T)
+    return W @ V[:, :n_components], lam

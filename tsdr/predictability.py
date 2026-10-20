@@ -7,6 +7,7 @@
 # DiCCA - Dynamic inner Canonical Correlation Analysis
 
 import numpy as np
+import scipy
 from sklearn.decomposition import PCA
 
 from sklearn.linear_model import LinearRegression
@@ -28,11 +29,12 @@ class TLPC():
     information see Bialek & Tishby (1999).
 
     The steps involved in TLPC are: (1) whiten the data, (2) compute the
-    covariance (C0) and time-lagged covariance (Clag) matrices,
-    (3) form Sigma = Clag C0^-1, (4) apply eigendecomposition to 
-    I - Sigma^2 and select the eigenvectors corresponding to the least
-    eigenvalues, and (5) apply the eigenvector linear transformation
-    to the whitened data.
+    covariance (C0) and time-lagged covariance (Ctau) matrices,
+    (3) form the covariance of the past conditioned on the future,
+    C0 - Ctau C0^-1 Ctau^T (I - Ctau Ctau^T for whitened data), 
+    (4) apply generalized eigendecomposition relative to C0 and select the
+    eigenvectors corresponding to the least eigenvalues, and (5) apply the
+    eigenvector linear transformation to the whitened data.
 
     Reference: Creutzik & Sprekeler (2008) Predictive coding and the slowness
     principle, Neural Comp.
@@ -85,23 +87,31 @@ class TLPC():
         # whiten the data
         Xw = pca_white.transform(X)
 
-        # compute the zero-lag covariance matrix
-        C0 = Xw[:-1,:].T @ Xw[:-1,:]/(T - 1)
+        # past (X0) and future (Xlag) samples
+        X0 = Xw[:-self.lag,:]
+        Xlag = Xw[self.lag:,:]
+
+        # compute the zero-lag covariance matrices of the past and future
+        C0 = X0.T @ X0/(T - 1 - self.lag)
+        Clag0 = Xlag.T @ Xlag/(T - 1 - self.lag)
 
         # compute the time-lagged covariance matrix
-        Ctau = Xw[:-self.lag,:].T @ Xw[self.lag:,:]/(T - 1 - self.lag)
+        Ctau = X0.T @ Xlag/(T - 1 - self.lag)
 
-        # compute Sigma from Creutzig et al (2008)
-        Sigma = Ctau @ np.linalg.pinv(C0)
+        # covariance of the past conditioned on the future from 
+        # Creutzig & Sprekeler (2008), C0 - Ctau Clag0^-1 Ctau^T, which is 
+        # I - Ctau Ctau^T for whitened data
+        Ccond = C0 - Ctau @ np.linalg.pinv(Clag0) @ Ctau.T
+        Ccond = 0.5 * (Ccond + Ccond.T)
 
-        # eigendecomposition of I - Sigma^2
-        eigvals, eigvecs = np.linalg.eig(np.eye(Sigma.shape[0]) - Sigma @ Sigma)
-        eigvecs_sorted = eigvecs[:,np.argsort(eigvals)]
+        # generalized eigendecomposition Ccond w = lambda C0 w 
+        # (eigenvalues in ascending order)
+        _, eigvecs = scipy.linalg.eigh(Ccond, C0)
 
         # get linear transformation
         transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
-        transform2 = eigvecs_sorted[:,:self.n_components]
-        self.linear_transform_ = np.real(transform1 @ transform2)
+        transform2 = eigvecs[:,:self.n_components]
+        self.linear_transform_ = transform1 @ transform2
 
         return self
 

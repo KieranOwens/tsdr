@@ -50,3 +50,41 @@ def test_dicca_multiple_components(three_ar_sources):
     for i in range(3):
         assert corr2(Y[:, i], Yr[:, i]) > 0.99
         assert corr2(Y[:, i], S[:, i]) > 0.99
+
+
+def rotation_latent(T, theta, r, rng):
+    R = r * np.array([[np.cos(theta), -np.sin(theta)],
+                      [np.sin(theta), np.cos(theta)]])
+    z = np.zeros((T, 2))
+    for t in range(1, T):
+        z[t] = R @ z[t - 1] + 0.3 * rng.normal(size=2)
+    return z
+
+
+@pytest.mark.parametrize("theta", [np.pi / 2, np.pi / 3, np.pi / 12])
+def test_tlpc_rotational_latent(theta):
+    """A noisy 2-d rotation is the most predictable plane; TLPC must find
+    both of its coordinates (non-reversible dynamics, non-symmetric C_tau)."""
+    rng = np.random.default_rng(0)
+    T = 20000
+    z = rotation_latent(T, theta, 0.97, rng)
+    X, _ = random_mix(np.column_stack([z, rng.normal(size=(T, 4))]), seed=1)
+    model = TLPC(n_components=2).fit(X)
+    Y = model.transform(X)
+    assert np.all(subspace_cos(model.linear_transform_, unmixing(X, z)) > 0.99)
+    assert abs(np.corrcoef(Y[:, 0], Y[:, 1])[0, 1]) < 0.01
+    Wr, _ = ref.tlpc_ref(X, 2)
+    assert np.all(subspace_cos(model.linear_transform_, Wr) > 0.999)
+
+
+def test_tlpc_reversible_matches_reference():
+    rng = np.random.default_rng(2)
+    T = 5000
+    S = np.column_stack([ar1(T, 0.95, rng), ar1(T, 0.5, rng),
+                         rng.normal(size=(T, 3))])
+    X, _ = random_mix(S, seed=2)
+    Y = TLPC(n_components=2).fit_transform(X)
+    Wr, _ = ref.tlpc_ref(X, 2)
+    Yr = (X - X.mean(0)) @ Wr
+    for i in range(2):
+        assert corr2(Y[:, i], Yr[:, i]) > 0.999
