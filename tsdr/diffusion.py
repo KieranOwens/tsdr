@@ -155,15 +155,21 @@ class DMcov():
             # normalise W
             Wnorm = D_neg_root @ W @ D_neg_root
 
-            # eigendecomposition
+            # eigendecomposition (eigenvalues in ascending order)
             _, eigvecs = np.linalg.eigh(Wnorm)
+
+            # the leading eigenvectors have the largest eigenvalues, and the
+            # last eigenvector (eigenvalue 1) is the trivial one
+            self.components = eigvecs[:,-2:-2-self.n_components:-1]
 
         else:
 
-            # eigendecomposition
+            # eigendecomposition (eigenvalues in ascending order)
             _, eigvecs = np.linalg.eigh(D - W)
 
-        self.components = eigvecs[:,1:1+self.n_components]
+            # the leading eigenvectors have the smallest eigenvalues, and the
+            # first eigenvector (eigenvalue 0) is the trivial one
+            self.components = eigvecs[:,1:1+self.n_components]
 
         return self
 
