@@ -9,8 +9,11 @@
 # sPCA_dwt - Spectral Principal Component Analysis using the
 #            discrete wavelet transform
 
+import warnings
+
 import numpy as np
 from sklearn.decomposition import PCA
+from sklearn.exceptions import ConvergenceWarning
 import pywt
 
 ###############################################################################
@@ -293,12 +296,19 @@ class TCCA_Stiefel:
         Default: 1.
 
     max_iters: int
-        The maximum number of iterations during trace optimisation.
+        The maximum number of iterations during trace optimisation. A
+        ConvergenceWarning is raised if the optimisation has not converged
+        (see tol) after max_iters iterations.
         Default: 100.
 
     lr: float
         The learning rate used for gradient descent during trace optimisation.
         Default: 0.1.
+
+    tol: float
+        The optimisation stops when the norm of the Riemannian gradient falls
+        below tol.
+        Default: 1e-6.
 
     seed: int
         The random seed used for initialisation of the linear transformation
@@ -315,13 +325,15 @@ class TCCA_Stiefel:
         The linear transformation that yields the TCCA components when applied 
         to the input time series X.
     """
-    def __init__(self, n_components=1, lag=1, max_iters=100, lr=0.1, seed=0, whiten=True):
+    def __init__(self, n_components=1, lag=1, max_iters=100, lr=0.1, seed=0, whiten=True,
+                 tol=1e-6):
         self.n_components = n_components
         self.lag = lag
         self.max_iters = max_iters
         self.lr = lr
         self.seed = seed
         self.whiten = whiten
+        self.tol = tol
 
     # The analytic gradient of the loss function
     # L(W) = -tr(W^T C_tau W) / tr(W^T C_0 W)
@@ -386,20 +398,36 @@ class TCCA_Stiefel:
         C0 = (X0.T @ X0) / (T - 1 - lag)
         Ctau = (X0.T @ Xtau) / (T - 1 - lag)
 
-        # Random seed for initialisation of W
-        np.random.seed(self.seed)
+        # Random number generator for initialisation of W (without 
+        # resetting the global NumPy random state)
+        rng = np.random.RandomState(self.seed)
 
         # Initialise W on the Stiefel manifold
-        W = np.random.randn(D, self.n_components)
+        W = rng.randn(D, self.n_components)
         # QR decomposition to ensure W is orthonormal
         W, _ = np.linalg.qr(W)
 
         # Trace optimisation loop
+        converged = False
         for _ in range(self.max_iters):
             G = self._grad(W, C0, Ctau)
             Rgrad = self._project_to_tangent(W, G)
+            if np.linalg.norm(Rgrad) < self.tol:
+                converged = True
+                break
             W = W - self.lr * Rgrad
             W = self._retraction(W)
+
+        if not converged:
+            warnings.warn(f"TCCA_Stiefel did not converge in max_iters={self.max_iters} "
+                          f"iterations (Riemannian gradient norm {np.linalg.norm(Rgrad):.2e} "
+                          f">= tol={self.tol}); consider increasing max_iters.",
+                          ConvergenceWarning)
+
+        # The objective is invariant to rotations of W within the subspace, so
+        # rotate W to order the components by autocorrelation
+        eigvals, eigvecs = np.linalg.eigh(W.T @ self._symmetric(Ctau) @ W)
+        W = W @ eigvecs[:,::-1]
 
         # Get linear transformation
         if self.whiten:
