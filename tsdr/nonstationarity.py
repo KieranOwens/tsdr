@@ -1004,9 +1004,10 @@ class BSSnonstat():
 
     The steps involved in BSSnonstat are: (1) whiten the data, 
     (2) initialise a unit norm projection vector w, (3) iteratively optimise
-    w using a fixed point algorithm, (4) deflate the data and repeat the
-    optimisation to find further projection vectors, and (5) apply the
-    transformation vectors to the whitened data.
+    w using a fixed point algorithm, (4) repeat the optimisation to find 
+    further projection vectors, orthogonalising each w against the previous 
+    ones after every update (deflationary orthogonalisation), and (5) apply 
+    the transformation vectors to the whitened data.
 
     Reference: Hyvarinen (2001) Blind source separation by nonstationarity
     of variance, IEEE Trans. on NN
@@ -1069,43 +1070,41 @@ class BSSnonstat():
         # matrix used during optimisation
         M = (X0.T @ Xlag + Xlag.T @ X0) / T
 
-        # collect projection vectors
-        W = []
+        # collect projection vectors (as columns)
+        W = np.zeros((D, 0))
 
         # compute each projection vector
         for _ in range(self.n_components):
 
-            # initialise the linear transformation vector
+            # initialise the linear transformation vector, orthogonal to the
+            # previous projection vectors
             w = np.random.normal(size=(D, 1))
+            w = w - W @ (W.T @ w)
             w = w / np.linalg.norm(w)
 
             # Hyvarinen (2001) equation (7)
             for _ in range(self.max_iters):
-                e1 = np.zeros(shape=w.shape)
-                e2 = np.zeros(shape=w.shape)
 
-                for i in range(T):
-                    ztau = Xlag[i,:].reshape(-1,1)
-                    zt = X0[i,:].reshape(-1,1)
-
-                    e1 += (zt @ w.T @ zt @ (w.T @ ztau)**2)/T
-                    e2 += (ztau @ w.T @ ztau @ (w.T @ zt)**2) / T
+                # E{z_t (w^T z_t) (w^T z_t-lag)^2} and
+                # E{z_t-lag (w^T z_t-lag) (w^T z_t)^2}
+                y0 = X0 @ w
+                ylag = Xlag @ w
+                e1 = X0.T @ (y0 * ylag**2) / T
+                e2 = Xlag.T @ (ylag * y0**2) / T
 
                 w = e1 + e2 - 2*w - M @ w @ (w.T @ M @ w)
+
+                # deflationary orthogonalisation (Gram-Schmidt) against the 
+                # previous projection vectors, Hyvarinen (2001) Sec. III
+                w = w - W @ (W.T @ w)
                 w = w / np.linalg.norm(w)
 
             # collect projection vectors
-            W.append(w)
-
-            # deflate Xw to obtain subsequent vectors
-            Xw = Xw - Xw @ (w @ w.T)
-            X0 = Xw[:-self.lag,:]
-            Xlag = Xw[self.lag:,:]
-            M = X0.T @ Xlag + Xlag.T @ X0
+            W = np.concatenate([W, w], axis=1)
 
         # get linear transformation
         transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
-        transform2 = np.concatenate(W, axis=1)
+        transform2 = W
         self.linear_transform_ = (transform1 @ transform2)
 
         return self
