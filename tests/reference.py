@@ -67,3 +67,18 @@ def tlpc_ref(X, n_components, lag=1):
     C = Xw[:-lag].T @ Xw[lag:] / (T - lag - 1)
     lam, V = np.linalg.eigh(np.eye(X.shape[1]) - C @ C.T)
     return W @ V[:, :n_components], lam
+
+
+def prca_ref(X, n_components, p=1, lag=1):
+    """Multivariate linear (VAR) PrCA (Schneider & Griffies, 1999; Owens &
+    Fulcher, 2025, Eqs. 26-27): regress x_{t+lag} on [x_t, ..., x_{t-p+1}],
+    then solve C_E w = lambda C_0 w on whitened data."""
+    Xw, W, _ = whiten_ref(X)
+    T, D = Xw.shape
+    rows = T - (p - 1) - lag
+    Z = np.column_stack([Xw[p - 1 - k: p - 1 - k + rows] for k in range(p)]
+                        + [np.ones(rows)])
+    Y = Xw[p - 1 + lag:]
+    B = np.linalg.lstsq(Z, Y, rcond=None)[0]
+    lam, V = np.linalg.eigh(np.cov(Y - Z @ B, rowvar=False))
+    return W @ V[:, :n_components], lam

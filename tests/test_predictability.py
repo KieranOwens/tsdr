@@ -88,3 +88,49 @@ def test_tlpc_reversible_matches_reference():
     Yr = (X - X.mean(0)) @ Wr
     for i in range(2):
         assert corr2(Y[:, i], Yr[:, i]) > 0.999
+
+
+@pytest.fixture(scope="module")
+def opposite_ar_sources():
+    """Two predictable AR(1) sources (phi = +0.9, -0.9) and four noise
+    sources."""
+    rng = np.random.default_rng(1)
+    T = 20000
+    return np.column_stack([ar1(T, .9, rng), ar1(T, -.9, rng),
+                            rng.normal(size=(T, 4))])
+
+
+@pytest.mark.parametrize("p", [1, 3])
+def test_prca_linear_reg_matches_multivariate_reference(opposite_ar_sources, p):
+    S = opposite_ar_sources
+    X, _ = random_mix(S, seed=5)
+    model = PrCA(n_components=2, model='linear_reg', p=p).fit(X)
+    assert np.all(subspace_cos(model.linear_transform_,
+                               unmixing(X, S[:, :2])) > 0.999)
+    Wr, _ = ref.prca_ref(X, 2, p=p)
+    assert np.all(subspace_cos(model.linear_transform_, Wr) > 0.999)
+
+
+def test_prca_linear_reg_is_basis_independent(opposite_ar_sources):
+    """Two different mixings of the same sources give the same components in
+    source coordinates."""
+    S = opposite_ar_sources
+    X1, A1 = random_mix(S, seed=11)
+    X2, A2 = random_mix(S, seed=12)
+    w1 = PrCA(n_components=2, model='linear_reg').fit(X1).linear_transform_
+    w2 = PrCA(n_components=2, model='linear_reg').fit(X2).linear_transform_
+    assert np.all(subspace_cos(A1 @ w1, A2 @ w2) > 0.999)
+
+
+def test_prca_kernel_ridge_linear_kernel(opposite_ar_sources):
+    S = opposite_ar_sources[:2000]
+    X, _ = random_mix(S, seed=5)
+    model = PrCA(n_components=2, model='kernel_ridge', kernel='linear',
+                 alpha=1e-6).fit(X)
+    assert np.all(subspace_cos(model.linear_transform_,
+                               unmixing(X, S[:, :2])) > 0.99)
+
+
+def test_prca_unknown_model_raises(opposite_ar_sources):
+    with pytest.raises(ValueError, match="Unknown model"):
+        PrCA(model='ridge').fit(opposite_ar_sources[:500])

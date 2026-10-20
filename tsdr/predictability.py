@@ -199,8 +199,10 @@ class PrCA():
     model: str
         Specify the predictive model with options 'diff', 'linear_reg', and
         'kernel_ridge'. 'diff' uses naive differencing and is equivalent to
-        Slow Feature Analysis (SFA) for lag=1. 'linear_reg' uses multivariate
-        linear regression. 'kernel_ridge' uses kernel ridge regression.
+        Slow Feature Analysis (SFA) for lag=1 (with whiten=True). 
+        'linear_reg' uses multivariate linear regression. 'kernel_ridge' uses
+        kernel ridge regression. Both models predict all variables at time
+        t+lag from the previous p time steps of all variables.
         Default: diff.
 
     **kwargs: dictionary
@@ -244,8 +246,9 @@ class PrCA():
     def _get_prediction_errors(self, X):
         """ Compute prediction errors"""
 
-        # data dimensions
-        T, D = X.shape
+        if self.model not in ('diff', 'linear_reg', 'kernel_ridge'):
+            raise ValueError(f"Unknown model '{self.model}'. Options are "
+                             "'diff', 'linear_reg', and 'kernel_ridge'.")
 
         # simple differencing (equivalent to SFA)
         if self.model == 'diff':
@@ -254,26 +257,26 @@ class PrCA():
 
         else:
 
-            # prediction errors have T - (p + lag - 1) rows
-            E = np.zeros((T - (self.p + self.lag - 1), D))
+            # predict the full state X_{t+lag} from the p previous states of
+            # all variables (Xt, Xt-1, ..., Xt-p+1), so that the prediction 
+            # errors E are those of the multivariate time series and w^T E 
+            # is the prediction error of the component w^T X
+            # (prediction errors have T - (p + lag - 1) rows)
 
-            for i in range(D):
+            # data to use for predictions
+            X_p = self._tde(X[:-self.lag,:], self.p, 1)   # drop last `lag` points
 
-                # data to use for predictions
-                x = X[:,i]
-                x_p = self._tde(x[:-self.lag].reshape(-1,1), self.p, 1)   # drop last `lag` points
+            # data to predict
+            Y = X[self.p - 1 + self.lag:,:]
 
-                # data to predict
-                y = x[self.p - 1 + self.lag:]  
+            # fit a model using X_p and Y
+            if self.model == 'linear_reg':
 
-                # fit a model using x_p and y
-                if self.model == 'linear_reg':
-                    
-                    E[:,i] = y - LinearRegression(**self.kwargs).fit(x_p, y).predict(x_p)
+                E = Y - LinearRegression(**self.kwargs).fit(X_p, Y).predict(X_p)
 
-                elif self.model == 'kernel_ridge':
+            elif self.model == 'kernel_ridge':
 
-                    E[:,i] = y - KernelRidge(**self.kwargs).fit(x_p, y).predict(x_p)
+                E = Y - KernelRidge(**self.kwargs).fit(X_p, Y).predict(X_p)
 
         return E
 
