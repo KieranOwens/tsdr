@@ -18,8 +18,8 @@ METHODS = {
     "SICA": lambda rs: SICA(n_components=2, random_state=rs),
     "BSSnonstat": lambda rs: BSSnonstat(n_components=2, max_iters=5,
                                         random_state=rs),
-    "LDS": lambda rs: LDS(n_components=2, max_iter=2, random_state=rs),
-    "DFA": lambda rs: DFA(n_components=2, max_iter=2, random_state=rs),
+    "LDS": lambda rs: LDS(n_components=2, max_iter=2, init='random', random_state=rs),
+    "DFA": lambda rs: DFA(n_components=2, max_iter=2, init='random', random_state=rs),
     "ForeCA": lambda rs: ForeCA(n_components=2, n_starts=2, random_state=rs),
     "DCA": lambda rs: DCA(n_components=2, T=2, n_init=2, random_state=rs),
 }

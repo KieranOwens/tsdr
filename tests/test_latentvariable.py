@@ -2,10 +2,11 @@
 
 import numpy as np
 import pytest
+import scipy.stats
 
 from tsdr.latentvariable import LDS, DFA
 
-from helpers import subspace_cos, random_mix
+from helpers import corr2, subspace_cos, random_mix
 from reference import lds_posterior_ref
 
 
@@ -72,3 +73,39 @@ def test_dfa_recovers_common_trends(common_trends):
     Y = DFA(n_components=2, max_iter=30, random_state=0).fit_transform(X)
     Yc, trends_c = Y - Y.mean(0), trends - trends.mean(0)
     assert np.all(subspace_cos(Yc, trends_c) > 0.99)
+
+
+def low_rank_sinusoid(noise_var, seed):
+    """A sinusoid hidden among nine channels of high-variance noise of rank
+    eight, randomly rotated, so that one direction is noise-free."""
+    rng = np.random.default_rng(seed)
+    T, D = 1000, 10
+    z = np.sin(np.linspace(0, 4 * np.pi, T))
+    noise = rng.normal(scale=np.sqrt(noise_var), size=(T, D - 2)) @ \
+        scipy.stats.ortho_group.rvs(D - 1, random_state=seed)[:D - 2]
+    A = scipy.stats.ortho_group.rvs(D, random_state=seed)
+    return z, np.column_stack([z, noise]) @ A[:, :D - 1]
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_lds_autocorrelation_init_recovers_noise_free_sinusoid(seed):
+    """From the autocorrelation initialisation, EM finds the noise-free 
+    sinusoid, whereas from a random initialisation it can converge to a 
+    latent state that models the noise."""
+    z, X = low_rank_sinusoid(100.0, seed)
+    Y = LDS().fit_transform(X)
+    assert corr2(Y, z) > 0.99
+
+
+def test_lds_autocorrelation_init_is_deterministic(common_trends):
+    """The autocorrelation initialisation does not use random_state."""
+    _, X = common_trends
+    a = LDS(n_components=2, max_iter=5, random_state=0).fit_transform(X)
+    b = LDS(n_components=2, max_iter=5, random_state=1).fit_transform(X)
+    np.testing.assert_array_equal(a, b)
+
+
+def test_lds_unknown_init_raises(common_trends):
+    _, X = common_trends
+    with pytest.raises(ValueError, match="Unknown init"):
+        LDS(init="pca").fit(X)

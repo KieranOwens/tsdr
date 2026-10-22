@@ -83,6 +83,26 @@ def test_nlsa_recovers_sinusoid(seed):
     assert corr2(Y[:, 0], z[q:]) > 0.9
 
 
+def test_nlsa_whitening_recovers_low_variance_sinusoid():
+    """With high-variance noise, the kernel distances of the unwhitened data
+    are dominated by the noise, but after whitening NLSA recovers the 
+    sinusoid."""
+    z, X = sinusoid_benchmark(noise_var=100.0)
+    q = 10
+    assert corr2(NLSA(q=q).fit_transform(X)[:, 0], z[q:]) > 0.9
+    assert corr2(NLSA(q=q, whiten=False).fit_transform(X)[:, 0], z[q:]) < 0.1
+
+
+def test_nlsa_depends_on_temporal_order():
+    """NLSA uses the temporal order of the data (through the time-lagged 
+    embedding): after a random permutation of the time points, it no longer
+    recovers the sinusoid."""
+    z, X = sinusoid_benchmark()
+    q = 10
+    perm = np.random.default_rng(0).permutation(len(z))
+    assert corr2(NLSA(q=q).fit_transform(X[perm])[:, 0], z[perm][q:]) < 0.1
+
+
 def test_nlsa_temporal_modes_are_orthonormal():
     """The temporal modes are orthonormal with respect to the invariant
     measure of the diffusion map, which is a probability distribution."""
@@ -103,7 +123,7 @@ def test_nlsa_with_complete_eigenfunction_basis():
     _, X = sinusoid_benchmark(T=300)
     q = 10
     s = len(X) - q
-    model = NLSA(n_components=5, q=q, n_eigenfunctions=s).fit(X)
+    model = NLSA(n_components=5, q=q, n_eigenfunctions=s, whiten=False).fit(X)
     Xc = X - X.mean(0)
     E = np.column_stack([Xc[q - 1 - i:len(X) - i] for i in range(q)])[1:]
     eigvals = np.linalg.eigvalsh(E.T @ (model.measure_[:, None] * E))[::-1]

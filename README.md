@@ -82,7 +82,7 @@ The figure at the top summarizes these categories.
 
 A few methods differ from the common pattern:
 
-- Methods with a random initialization or random order of updates (`BioSFA`, `ISFA`, `SICA`, `ForeCA`, `DCA`, `BSSnonstat`, `LDS`, `DFA`) accept a `random_state` argument for reproducible results; `TCCA_Stiefel` uses a `seed` argument.
+- Methods with a random initialization or random order of updates (`BioSFA`, `ISFA`, `SICA`, `ForeCA`, `DCA`, `BSSnonstat`, and `LDS` and `DFA` with `init='random'`) accept a `random_state` argument for reproducible results; `TCCA_Stiefel` uses a `seed` argument. `LDS` and `DFA` are initialised deterministically by default (`init='autocorrelation'`).
 - The diffusion methods are nonlinear, so they have `fit_transform` but no separate `transform`. `DMcov` and `DIG` embed sliding windows of the time series (of length `window`, every `step` samples), so they return one row per window; `NLSA` embeds the time series with `q` lags, so it returns `n_samples - q` rows (for time points `q` onwards).
 
 ## Citation

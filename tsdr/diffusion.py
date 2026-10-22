@@ -13,6 +13,8 @@ from kneed import KneeLocator
 from sklearn.neighbors import NearestNeighbors
 from sklearn.manifold import MDS
 
+from ._whitening import fit_whitening
+
 
 ###############################################################################
 ###############################################################################
@@ -431,16 +433,22 @@ class NLSA():
     which capture its nonlinear geometry and so can reveal intermittent and 
     low-variance patterns that SSA misses.
 
-    The steps involved in NLSA are: (1) form the time-lagged embedding of the
-    data with q lags, (2) build a Gaussian kernel on the b nearest neighbours
-    of each embedded sample, scaled by the local velocity (the distance 
-    between consecutive embedded samples), and normalise it to a diffusion 
-    map transition matrix P with invariant measure mu (Coifman & Lafon, 
-    2006), (3) compute the l leading eigenvectors phi of P (the Laplacian 
-    eigenfunctions), (4) compute the components of the linear operator from 
-    the eigenfunctions to embedding space, A = X diag(mu) phi, and its SVD 
-    A = U S V^T, and (5) return the temporal modes phi V, ordered by 
-    decreasing singular value.
+    The steps involved in NLSA are: (1) whiten the data (optional), (2) form
+    the time-lagged embedding of the data with q lags, (3) build a Gaussian 
+    kernel on the b nearest neighbours of each embedded sample, scaled by the
+    local velocity (the distance between consecutive embedded samples), and 
+    normalise it to a diffusion map transition matrix P with invariant 
+    measure mu (Coifman & Lafon, 2006), (4) compute the l leading 
+    eigenvectors phi of P (the Laplacian eigenfunctions), (5) compute the 
+    components of the linear operator from the eigenfunctions to embedding 
+    space, A = X diag(mu) phi, and its SVD A = U S V^T, and (6) return the 
+    temporal modes phi V, ordered by decreasing singular value.
+
+    Giannakis & Majda (2012) apply NLSA to the data without whitening, so 
+    that the kernel distances, like the variance in PCA and SSA, are 
+    dominated by the highest-variance directions of the data. Whitening (the 
+    default here) instead gives all directions equal weight, so that 
+    low-variance components with temporal structure can be recovered.
 
     The temporal modes are computed for the embedded samples with a 
     preceding sample (needed for the local velocity), i.e., for time points 
@@ -475,6 +483,11 @@ class NLSA():
         n_components.
         Default: 20.
 
+    whiten: bool
+        Whether to whiten the data (if False, the data are mean-centred, as 
+        in Giannakis & Majda, 2012).
+        Default: True.
+
     Attributes
     ----------
     components: ndarray, shape (n_samples - q, n_components)
@@ -489,13 +502,14 @@ class NLSA():
     """
 
     def __init__(self, n_components=1, q=10, epsilon=1.0, n_neighbours=50, 
-                 n_eigenfunctions=20):
+                 n_eigenfunctions=20, whiten=True):
 
         self.n_components = n_components
         self.q = q
         self.epsilon = epsilon
         self.n_neighbours = n_neighbours
         self.n_eigenfunctions = n_eigenfunctions
+        self.whiten = whiten
 
     def fit(self, X, y=None):
         """Fit the model to X
@@ -514,8 +528,15 @@ class NLSA():
             Returns self.
         """
 
-        # mean centering
-        X = X - np.mean(X, axis=0)
+        if self.whiten:
+
+            # whiten the data
+            X = fit_whitening(X).transform(X)
+
+        else:
+
+            # mean centering
+            X = X - np.mean(X, axis=0)
 
         # time-lagged embedding: row j is [x_{j+q-1}, x_{j+q-2}, ..., x_j], 
         # Algorithm S1 lines 1-9

@@ -6,6 +6,7 @@
 # DFA - Dynamic Factor Analysis
 
 import numpy as np
+import scipy.linalg
 from scipy.linalg import pinv
 from sklearn.decomposition import PCA
 from sklearn.utils import check_random_state
@@ -65,21 +66,31 @@ class LDS():
 
     random_state: int, RandomState instance or None
         Controls the random initialisation of the output/observation
-        matrix C. Pass an int for reproducible results across calls (the
-        global NumPy random state is then left unchanged). If None, the
-        global NumPy random state is used.
+        matrix C if init='random'. Pass an int for reproducible results 
+        across calls (the global NumPy random state is then left unchanged).
+        If None, the global NumPy random state is used.
         Default: None.
 
+    init: str
+        The initialisation of the output/observation matrix C. If 
+        'autocorrelation', C is initialised (deterministically) with the 
+        n_components most autocorrelated directions of the data, i.e., the
+        generalised eigenvectors of the symmetrised lag-1 autocovariance 
+        matrix with the largest eigenvalues (as in TICA), which helps EM 
+        avoid local optima in which the latent state models noise. If 
+        'random', C is initialised with standard normal entries.
+        Default: 'autocorrelation'.
     """
 
     def __init__(self, n_components=1, max_iter=50, constrain_A_identity=False, whiten=True,
-                 random_state=None):
+                 random_state=None, init='autocorrelation'):
 
         self.n_components = n_components
         self.max_iter = max_iter
         self.constrain_A_identity = constrain_A_identity
         self.whiten = whiten
         self.random_state = random_state
+        self.init = init
 
     # E-step: Kalman filtering and smoothing
     def _E_step(self, Y, A, Q, C, R, mu0, V0):
@@ -222,8 +233,29 @@ class LDS():
         A = np.eye(d)               # Latent state transition dynamics matrix
         Q = np.eye(d)               # Latent state noise covariance matrix
 
-        rng = check_random_state(self.random_state)
-        C = rng.randn(D, d)         # Output/Observation matrix
+        # Output/Observation matrix
+        if self.init == 'autocorrelation':
+
+            # the n_components most autocorrelated directions w of the data 
+            # (generalised eigenvectors of the symmetrised lag-1 
+            # autocovariance and the covariance, C1 w = lambda C0 w), as 
+            # observation patterns C = C0 w of unit-variance latent states
+            T = Y.shape[0]
+            Yc = Y - np.mean(Y, axis=0)
+            C0 = Yc.T @ Yc / T
+            C1 = Yc[:-1,:].T @ Yc[1:,:] / (T - 1)
+            _, W = scipy.linalg.eigh((C1 + C1.T) / 2, C0)
+            C = C0 @ W[:,::-1][:,:d]
+
+        elif self.init == 'random':
+
+            rng = check_random_state(self.random_state)
+            C = rng.randn(D, d)
+
+        else:
+
+            raise ValueError(f"Unknown init '{self.init}'; use 'autocorrelation' or 'random'.")
+
         R = np.eye(D) * np.var(Y)   # Output/Observation noise covariance matrix
 
         mu0 = np.zeros(d)           # Initial latent state mean
@@ -338,16 +370,21 @@ class DFA(LDS):
 
     random_state: int, RandomState instance or None
         Controls the random initialisation of the output/observation
-        matrix C. Pass an int for reproducible results across calls (the
-        global NumPy random state is then left unchanged). If None, the
-        global NumPy random state is used.
+        matrix C if init='random'. Pass an int for reproducible results 
+        across calls (the global NumPy random state is then left unchanged).
+        If None, the global NumPy random state is used.
         Default: None.
+
+    init: str
+        The initialisation of the output/observation matrix C, 
+        'autocorrelation' (deterministic) or 'random' (see LDS).
+        Default: 'autocorrelation'.
     """
 
     def __init__(self, n_components=1, max_iter=50, whiten=True, 
-                 random_state=None):
+                 random_state=None, init='autocorrelation'):
 
         # an LDS with the transition matrix constrained to the identity
         super().__init__(n_components=n_components, max_iter=max_iter, 
                          constrain_A_identity=True, whiten=whiten, 
-                         random_state=random_state)
+                         random_state=random_state, init=init)
