@@ -1,15 +1,15 @@
 """Value tests for the predictability methods (TLPC, PrCA, DiCCA, ForeCA,
-PFA)."""
+PFA, PTS)."""
 
 import numpy as np
 import pytest
 import scipy.stats
 
-from tsdr.predictability import TLPC, PrCA, DiCCA, ForeCA, PFA
+from tsdr.predictability import TLPC, PrCA, DiCCA, ForeCA, PFA, PTS
 
 from tsdr._whitening import fit_whitening
 
-from helpers import corr2, subspace_cos, random_mix, ar1, unmixing
+from helpers import corr2, subspace_cos, random_mix, ar1, unmixing, whiten_ref
 import reference as ref
 
 
@@ -251,3 +251,90 @@ def test_pfa_iterated_prediction_reduces_overfitting():
     err_k0 = ar_error(PFA(n_components=2, p=2, k=0).fit_transform(X))
     err_k4 = ar_error(PFA(n_components=2, p=2, k=4).fit_transform(X))
     assert err_k4 < err_k0 - 0.2
+
+
+def var_error(Y, M):
+    """Mean squared prediction error (summed over components) of a least
+    squares VAR(M) model of the centred time series Y."""
+    Y = Y - Y.mean(0)
+    R = np.column_stack([Y[M - i:len(Y) - i] for i in range(1, M + 1)])
+    E = Y[M:] - R @ np.linalg.lstsq(R, Y[M:], rcond=None)[0]
+    return np.sum(E ** 2) / len(E)
+
+
+def test_pts_exact_solution_for_one_lag_and_component(three_ar_sources):
+    """For M = 1 and one component, the most predictable projection is the
+    eigenvector of the symmetrised lag-1 autocovariance of the whitened data
+    with the eigenvalue of largest magnitude (Dong et al., 2022, Sec. 2.3)."""
+    _, X = three_ar_sources
+    model = PTS(n_components=1, M=1).fit(X)
+    Xw, W_white, _ = whiten_ref(X)
+    C1 = Xw[:-1].T @ Xw[1:]
+    lam, V = np.linalg.eigh(C1 + C1.T)
+    w = W_white @ V[:, [np.argmax(np.abs(lam))]]
+    assert subspace_cos(model.linear_transform_, w)[0] > 1 - 1e-6
+    np.testing.assert_allclose(model.prediction_errors_[0],
+                               var_error(X @ w / np.std(X @ w, ddof=1), 1),
+                               rtol=1e-4)
+
+
+def test_pts_recovers_predictable_sources(three_ar_sources):
+    """The components span the predictable subspace, are uncorrelated with
+    unit variance, ar_coefs_ is the VAR model of the components, and an
+    unpredictable fourth component adds about 1 to the prediction error
+    (Dong et al., 2022, Sec. 3.3)."""
+    S, X = three_ar_sources
+    model = PTS(n_components=4, M=2).fit(X)
+    Y = model.transform(X)
+    assert np.all(subspace_cos(model.linear_transform_[:, :3],
+                               unmixing(X, S[:, :3])) > 0.99)
+    np.testing.assert_allclose(np.cov(Y, rowvar=False), np.eye(4), atol=1e-8)
+    increments = np.diff(np.r_[0, model.prediction_errors_])
+    assert np.all(increments[:3] < 0.9)
+    assert increments[3] > 0.95
+    assert model.ar_coefs_.shape == (2, 4, 4)
+    np.testing.assert_allclose(model.prediction_errors_[-1], var_error(Y, 2),
+                               rtol=1e-3)
+
+
+def test_pts_paper_simulation():
+    """The simulation of Dong et al. (2022, Sec. 4.1, eq. 8), with 30 rather
+    than 1000 observed dimensions: a 3-dimensional VAR(2) process embedded
+    in noisy, standardised, randomly rotated observations."""
+    rng = np.random.default_rng(0)
+    T, n = 10000, 30
+    B1 = np.array([[1.1241, 0.3045, 0.3806], [0.3902, -0.8169, -0.3114],
+                   [-0.7166, -0.8630, 1.0115]])
+    B2 = np.array([[-0.2482, 0.3676, 0.0328], [-0.4240, 0.1101, 0.0267],
+                   [0.6011, -0.5975, -0.3224]])
+    x = np.zeros((T, 3))
+    for t in range(2, T):
+        x[t] = B1 @ x[t - 1] + B2 @ x[t - 2] + rng.normal(size=3)
+    P = np.linalg.qr(rng.normal(size=(n, 3)))[0]
+    y = x @ P.T + 0.02 * rng.normal(size=(T, n))
+    Q = scipy.stats.ortho_group.rvs(n, random_state=1)
+    z = y @ np.linalg.inv(np.linalg.cholesky(y.T @ y / T)).T @ Q.T
+    model = PTS(n_components=4, M=2).fit(z)
+    assert np.all(subspace_cos(model.linear_transform_[:, :3],
+                               unmixing(z, x)) > 0.999)
+    increments = np.diff(np.r_[0, model.prediction_errors_])
+    assert np.all(increments[:3] < 0.2)
+    assert increments[3] > 0.95
+
+
+def test_pts_alternating_steps_decrease_prediction_error(three_ar_sources):
+    """Each alternation of the VAR fit and the update of w does not increase
+    the prediction error of the second component."""
+    _, X = three_ar_sources
+    Xw, _, _ = whiten_ref(X)
+    model = PTS(n_components=2, M=2)
+    W1 = PTS(n_components=1, M=2).fit(X).linear_transform_
+    Wk = np.linalg.lstsq(Xw, X @ W1, rcond=None)[0]
+    Wk = Wk / np.linalg.norm(Wk)
+    w = np.linalg.qr(np.column_stack([Wk, np.ones(X.shape[1])]))[0][:, 1]
+    errors = []
+    for _ in range(10):
+        A, _ = model._fit_var(Xw, np.column_stack([Wk, w]))
+        w = model._update_w(Xw, Wk, A)
+        errors.append(model._fit_var(Xw, np.column_stack([Wk, w]))[1])
+    assert np.all(np.diff(errors) <= 1e-12)

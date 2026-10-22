@@ -7,6 +7,7 @@
 # DiCCA - Dynamic inner Canonical Correlation Analysis
 # ForeCA - Forecastable Component Analysis
 # PFA - Predictable Feature Analysis
+# PTS - Principal Time Series
 
 import warnings
 
@@ -14,6 +15,7 @@ import numpy as np
 import scipy
 import scipy.linalg
 import scipy.ndimage
+import scipy.optimize
 from sklearn.decomposition import PCA
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.utils import check_random_state
@@ -881,6 +883,265 @@ class PFA():
         # get linear transformation
         transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
         transform2 = eigvecs[:,:self.n_components]
+        self.linear_transform_ = transform1 @ transform2
+
+        return self
+
+    def transform(self, X):
+        """Apply dimension reduction to X.
+
+        Parameters
+        ----------
+        X : ndarray, shape (n_samples, n_features)
+            A multivariate time series of shape (n_samples, n_features).
+
+        Returns
+        -------
+        X_new: ndarray, shape (n_samples, n_components)
+            A (possibly multivariate) time series of components ordered by 
+            predictability.
+        """
+
+        return X @ self.linear_transform_
+
+    def fit_transform(self, X, y=None):
+        """Fit the model to X and apply dimension reduction to X.
+
+        Parameters
+        ----------
+        X : ndarray, shape (n_samples, n_features)
+            A multivariate time series of shape (n_samples, n_features).
+
+        y : None
+            Ignored. Used to comply with the scikit-learn API.
+
+        Returns
+        -------
+        X_new: ndarray, shape (n_samples, n_components)
+            A (possibly multivariate) time series of components ordered by 
+            predictability.
+        """
+
+        self.fit(X)
+        
+        return self.transform(X)
+
+###############################################################################
+###############################################################################
+# PTS - Principal Time Series
+###############################################################################
+###############################################################################
+
+class PTS():
+    """
+    Principal Time Series (PTS).
+
+    PTS is a TSDR method for extracting the most predictable components from a 
+    multivariate time series (i.e., for which the mean squared error of a 
+    vector autoregressive (VAR) model of the components is minimised).
+
+    The steps involved in PTS are: (1) whiten the data, (2) construct the 
+    projection W one column w at a time, orthogonal to the previous columns, 
+    by alternating until convergence between (a) fitting the order-M VAR 
+    model x_t ~ A_1 x_{t-1} + ... + A_M x_{t-M} of the components 
+    x_t = W^T z_t by least squares and (b) updating w to minimise the 
+    prediction error of the VAR model with A fixed, a quadratic function of 
+    w on the unit sphere that is minimised exactly, and (3) apply the linear 
+    transformation W to the whitened data.
+
+    Dong et al. (2022) start each column from w = 0, for which the first VAR 
+    model is trivial and the first update of w is arbitrary. Here each column 
+    is instead initialised by the exact solution for M = 1 and a single 
+    component (Dong et al., 2022, Sec. 2.3) in the orthogonal complement of 
+    the previous columns, i.e., the eigenvector of the symmetrised lag-1 
+    autocovariance with the eigenvalue of largest magnitude.
+
+    Reference: Dong, Qin & Boyd (2022) Extracting a low-dimensional 
+    predictable time series, Optimization and Engineering. A MATLAB 
+    implementation by the authors is available at 
+    https://github.com/cvxgrp/PrincipalTimeSeries.
+
+    Parameters
+    ----------
+    n_components: int
+        The dimension (number of variables) of the time-series output.
+        Default: 1.
+
+    M: int
+        The memory (order) of the VAR model, i.e., the number of time steps 
+        (t-1, ..., t-M) used to predict the components at time t.
+        Default: 1.
+
+    max_iters: int
+        The maximum number of iterations of steps (a)-(b) for each component.
+        A ConvergenceWarning is raised if the iteration has not converged 
+        (see tol) after max_iters iterations.
+        Default: 100.
+
+    tol: float
+        The iteration for each component stops when the decrease in the 
+        prediction error falls below tol.
+        Default: 1e-8.
+
+    Attributes
+    ----------
+    linear_transform_: ndarray, shape (n_features, n_components)
+        The linear transformation that yields the PTS components when applied 
+        to the input time series X.
+
+    ar_coefs_: ndarray, shape (M, n_components, n_components)
+        The coefficients A_1, ..., A_M of the VAR model of the components.
+
+    prediction_errors_: ndarray, shape (n_components,)
+        The mean squared VAR prediction error (summed over components) of the 
+        first k = 1, ..., n_components components. Each component adds at 
+        most 1 (for an unpredictable component), so increments close to 1 
+        indicate that no further predictable components remain (Dong et al., 
+        2022, Sec. 3.3).
+    """
+
+    def __init__(self, n_components=1, M=1, max_iters=100, tol=1e-8):
+
+        self.n_components = n_components
+        self.M = M
+        self.max_iters = max_iters
+        self.tol = tol
+
+    def _fit_var(self, Z, W):
+        """Least squares VAR coefficients and prediction error of the 
+        components Z W (Dong et al., 2022, Sec. 3.1)."""
+
+        T = Z.shape[0]
+        Xc = Z @ W
+        R = np.column_stack([Xc[self.M - i:T - i,:] for i in range(1, self.M + 1)])
+        coef = np.linalg.lstsq(R, Xc[self.M:,:], rcond=None)[0]
+        error = np.sum((Xc[self.M:,:] - R @ coef)**2) / (T - self.M)
+
+        # A_i such that x_t ~ sum_i A_i x_{t-i}, shape (M, k, k)
+        A = np.stack(np.split(coef, self.M)).transpose(0, 2, 1)
+
+        return A, error
+
+    def _update_w(self, Z, Wk, A):
+        """Minimise the VAR prediction error over the new column w of 
+        W = [Wk w] with A fixed, subject to Wk^T w = 0 and w^T w = 1 (Dong et 
+        al., 2022, Sec. 3.2)."""
+
+        T, D = Z.shape
+        k = Wk.shape[1]
+
+        # lagged data z_{t-i}, i = 0, ..., M
+        Zi = [Z[self.M - i:T - i,:] for i in range(self.M + 1)]
+
+        # blocks of A_i = [[A_11, a_12], [a_21^T, a_22]] for the existing 
+        # components (k) and the new component
+        A11, a12, a21, a22 = A[:,:k,:k], A[:,:k,k], A[:,k,:k], A[:,k,k]
+
+        # prediction errors of the existing components, c_top - sum_j P_j w,
+        # and of the new component, Q w + c_bot
+        c_top = Zi[0] @ Wk - sum(Zi[i] @ Wk @ A11[i-1].T for i in range(1, self.M + 1))
+        P = [sum(a12[i-1, j] * Zi[i] for i in range(1, self.M + 1)) for j in range(k)]
+        Q = Zi[0] - sum(a22[i-1] * Zi[i] for i in range(1, self.M + 1))
+        c_bot = -sum(Zi[i] @ Wk @ a21[i-1] for i in range(1, self.M + 1))
+
+        # prediction error w^T B w - 2 c^T w + const, Dong et al. (2022) eq. (6)
+        B = (sum(Pj.T @ Pj for Pj in P) + Q.T @ Q) / (T - self.M)
+        c = (sum(Pj.T @ c_top[:,j] for j, Pj in enumerate(P)) - Q.T @ c_bot) / (T - self.M)
+
+        # restrict to the orthogonal complement U of Wk and diagonalise,
+        # U^T B U = V diag(lam) V^T, Dong et al. (2022) eq. (7)
+        U = scipy.linalg.null_space(Wk.T) if k > 0 else np.eye(D)
+        lam, V = np.linalg.eigh(U.T @ B @ U)
+        beta = V.T @ U.T @ c
+
+        # y = (diag(lam) + mu I)^-1 beta with mu > -lam_1 the root of 
+        # sum_i beta_i^2 / (lam_i + mu)^2 = 1
+        g = lambda mu: np.sum(beta**2 / (lam + mu)**2) - 1
+        lower = -lam[0] + 1e-12 * max(1, abs(lam[0]))
+        if g(lower) <= 0:
+            # (near) hard case: the eigenvector of the least eigenvalue
+            y = np.zeros_like(lam)
+            y[0] = 1
+        else:
+            mu = scipy.optimize.brentq(g, lower, -lam[0] + np.linalg.norm(beta))
+            y = beta / (lam + mu)
+
+        w = U @ V @ y
+
+        return w / np.linalg.norm(w)
+
+    def fit(self, X, y=None):
+        """Fit the model to X
+
+        Parameters
+        ----------
+        X : ndarray, shape (n_samples, n_features)
+            A multivariate time series of shape (n_samples, n_features).
+
+        y : None
+            Ignored. Used to comply with the scikit-learn API.
+
+        Returns
+        -------
+        self : object
+            Returns self.
+        """
+
+        # fit a PCA whitening model
+        pca_white = fit_whitening(X)
+
+        # whiten the data
+        Z = pca_white.transform(X)
+
+        # data dimensions
+        T, D = Z.shape
+
+        # symmetrised lag-1 autocovariance
+        C1 = Z[:-1,:].T @ Z[1:,:] / (T - 1)
+        C1 = C1 + C1.T
+
+        # construct the columns of W sequentially, Dong et al. (2022) Alg. 1
+        W = np.zeros((D, 0))
+        errors = []
+        for _ in range(self.n_components):
+
+            # initialise w by the exact solution for M = 1 and one component, 
+            # in the orthogonal complement U of W (Dong et al., 2022, Sec. 2.3)
+            U = scipy.linalg.null_space(W.T) if W.shape[1] > 0 else np.eye(D)
+            lam, V = np.linalg.eigh(U.T @ C1 @ U)
+            w = U @ V[:,np.argmax(np.abs(lam))]
+            error = np.inf
+            converged = False
+            for _ in range(self.max_iters):
+
+                # (a) VAR coefficients with W = [Wk w] fixed
+                A, _ = self._fit_var(Z, np.column_stack([W, w]))
+
+                # (b) w with A fixed
+                w = self._update_w(Z, W, A)
+
+                # prediction error of the VAR model refitted with the new w
+                A, error_new = self._fit_var(Z, np.column_stack([W, w]))
+                if error - error_new < self.tol:
+                    converged = True
+                    break
+                error = error_new
+
+            if not converged:
+                warnings.warn(f"PTS did not converge in max_iters={self.max_iters} "
+                              f"iterations (decrease in prediction error "
+                              f"{error - error_new:.2e} >= tol={self.tol}); "
+                              "consider increasing max_iters.", ConvergenceWarning)
+
+            W = np.column_stack([W, w])
+            errors.append(error_new)
+
+        self.ar_coefs_ = A
+        self.prediction_errors_ = np.array(errors)
+
+        # get linear transformation
+        transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
+        transform2 = W
         self.linear_transform_ = transform1 @ transform2
 
         return self
