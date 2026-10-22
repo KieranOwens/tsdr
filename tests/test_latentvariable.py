@@ -1,9 +1,11 @@
 """Value tests for the latent variable methods."""
 
 import numpy as np
+import pytest
 
-from tsdr.latentvariable import LDS
+from tsdr.latentvariable import LDS, DFA
 
+from helpers import subspace_cos, random_mix
 from reference import lds_posterior_ref
 
 
@@ -37,3 +39,36 @@ def test_lds_e_step_matches_exact_posterior():
         blk = S[(t + 1) * d:(t + 2) * d, t * d:(t + 1) * d]
         np.testing.assert_allclose(
             Exxm1[t], blk + np.outer(mean[t + 1], mean[t]), atol=1e-10)
+
+
+@pytest.fixture(scope="module")
+def common_trends():
+    """Two random-walk common trends and four white-noise sources, randomly
+    mixed into six observed series, as in the DFA model of Zuur et al.
+    (2003)."""
+    rng = np.random.default_rng(0)
+    T = 1000
+    trends = np.cumsum(rng.normal(size=(T, 2)), axis=0)
+    S = np.column_stack([trends, 3 * rng.normal(size=(T, 4))])
+    X, _ = random_mix(S, seed=1)
+    return trends, X
+
+
+def test_dfa_is_lds_with_identity_transition(common_trends):
+    """DFA is the LDS with the transition matrix constrained to the
+    identity."""
+    _, X = common_trends
+    dfa = DFA(n_components=2, max_iter=5, random_state=0).fit(X)
+    lds = LDS(n_components=2, max_iter=5, constrain_A_identity=True,
+              random_state=0).fit(X)
+    np.testing.assert_array_equal(dfa.A, np.eye(2))
+    np.testing.assert_array_equal(dfa.transform(X), lds.transform(X))
+
+
+def test_dfa_recovers_common_trends(common_trends):
+    """The smoothed DFA trends span the subspace of the true common
+    trends."""
+    trends, X = common_trends
+    Y = DFA(n_components=2, max_iter=30, random_state=0).fit_transform(X)
+    Yc, trends_c = Y - Y.mean(0), trends - trends.mean(0)
+    assert np.all(subspace_cos(Yc, trends_c) > 0.99)

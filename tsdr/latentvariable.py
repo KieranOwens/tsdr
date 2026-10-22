@@ -3,6 +3,7 @@
 
 # Contains:
 # LDS - Latent linear dynamical system
+# DFA - Dynamic Factor Analysis
 
 import numpy as np
 from scipy.linalg import pinv
@@ -50,9 +51,9 @@ class LDS():
 
     constrain_A_identity: bool
         If True, the latent state transition dynamics matrix A is constrained
-        to be the identity matrix. This means that the latent state does not
-        evolve over time, and the model reduces to a random walk model.
-        If False, the latent dynamcis matrix A is estimated from the data.
+        to be the identity matrix, so that the latent state follows a random 
+        walk (see DFA). If False, the latent dynamics matrix A is estimated 
+        from the data.
         Default: False.
 
     whiten: bool
@@ -289,3 +290,64 @@ class LDS():
         self.fit(X)
         
         return self.transform(X)
+
+###############################################################################
+###############################################################################
+# DFA - Dynamic Factor Analysis
+###############################################################################
+###############################################################################
+
+class DFA(LDS):
+    """
+    Dynamic Factor Analysis (DFA).
+
+    DFA is a TSDR method for extracting a small number of common trends from 
+    a multivariate time series. It models the time series as a linear 
+    combination of latent common trends plus noise, where each trend follows 
+    a random walk: x_t = x_{t-1} + w_t and y_t = C x_t + v_t, with Gaussian 
+    noise w_t and v_t.
+
+    DFA is the latent linear dynamical system (LDS) with the transition 
+    matrix A constrained to be the identity matrix, and is fitted by the same 
+    EM algorithm (with Kalman filtering and smoothing). The components are 
+    the smoothed estimates of the common trends. Here the covariance 
+    matrices of w_t and v_t are estimated freely, rather than fixing the 
+    trend noise covariance to the identity and the observation noise 
+    covariance to be diagonal as in Zuur et al. (2003); this changes only the 
+    scaling and rotation of the trends, not the subspace that they span.
+
+    Reference: Zuur et al. (2003) Dynamic factor analysis to estimate common 
+    trends in fisheries time series, Canadian J of Fisheries and Aquatic 
+    Sciences
+
+    Parameters
+    ----------
+    n_components: int
+        The dimension (number of variables) of the time-series output.
+        This is the number of common trends.
+        Default: 1.
+
+    max_iter: int
+        The maximum number of iterations for the EM algorithm.
+        Default: 50.
+
+    whiten: bool
+        If True, the input time series is whitened before fitting the model.
+        If False, the input time series is used unchanged.
+        Default: True.
+
+    random_state: int, RandomState instance or None
+        Controls the random initialisation of the output/observation
+        matrix C. Pass an int for reproducible results across calls (the
+        global NumPy random state is then left unchanged). If None, the
+        global NumPy random state is used.
+        Default: None.
+    """
+
+    def __init__(self, n_components=1, max_iter=50, whiten=True, 
+                 random_state=None):
+
+        # an LDS with the transition matrix constrained to the identity
+        super().__init__(n_components=n_components, max_iter=max_iter, 
+                         constrain_A_identity=True, whiten=whiten, 
+                         random_state=random_state)

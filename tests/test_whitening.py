@@ -10,7 +10,7 @@ from tsdr.predictability import TLPC, PrCA, DiCCA, ForeCA, PFA, PTS
 from tsdr.determinism import DyCA, DMD
 from tsdr.nonstationarity import (ASSA, SSAsir, SSAsave, SSAcor, WaSSAf,
                                   WaSSAr, BSSnonstat)
-from tsdr.latentvariable import LDS
+from tsdr.latentvariable import LDS, DFA
 
 from helpers import corr2, random_mix, ar1
 
@@ -24,6 +24,7 @@ METHODS = {
     "WaSSAf": WaSSAf, "WaSSAr": WaSSAr,
     "BSSnonstat": lambda: BSSnonstat(max_iters=2),
     "LDS": lambda: LDS(max_iter=2),
+    "DFA": lambda: DFA(max_iter=2),
 }
 
 

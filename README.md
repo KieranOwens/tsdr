@@ -10,7 +10,7 @@
 
 _tsdr_ is a Python package of time-series dimension reduction (TSDR) methods: algorithms that reduce multivariate data to a few components by exploiting temporal structure.
 In contrast to general dimension reduction (GDR) methods, whose outputs are invariant to temporal permutation, TSDR methods are sensitive to temporal structure.
-The package implements 27 methods from the seven categories of TSDR methods defined in [Owens & Fulcher (2025)](https://doi.org/10.36227/techrxiv.176409662.29359239/v1), written in a simple, readable style to help time-series analysts understand the algorithms discussed in that review.
+The package implements 28 methods from the seven categories of TSDR methods defined in [Owens & Fulcher (2025)](https://doi.org/10.36227/techrxiv.176409662.29359239/v1), written in a simple, readable style to help time-series analysts understand the algorithms discussed in that review.
 
 ## Installation
 
@@ -76,13 +76,13 @@ Each is imported from the module named in the first column, e.g., `from tsdr.slo
 | (d) Determinism | `tsdr.determinism` | `DyCA` (dynamical component analysis), `DMD` (dynamic mode decomposition) |
 | (e) Non-stationarity | `tsdr.nonstationarity` | `ASSA` (analytic stationary subspace analysis), `SSAsir`, `SSAsave`, `SSAcor` (stationary subspace analysis via sliced inverse regression, sliced average variance estimation, and time-lagged autocorrelation), `WaSSAf`, `WaSSAr` (Wasserstein stationary subspace analysis using the Fréchet and root-Fréchet means), `BSSnonstat` (blind source separation via non-stationarity of variances) |
 | (f) Diffusion | `tsdr.diffusion` | `DMcov` (diffusion maps using covariance distance), `DIG` (dynamical information geometry) |
-| (g) Latent variable | `tsdr.latentvariable` | `LDS` (latent linear dynamical system) |
+| (g) Latent variable | `tsdr.latentvariable` | `LDS` (latent linear dynamical system), `DFA` (dynamic factor analysis) |
 
 The figure at the top summarizes these categories.
 
 A few methods differ from the common pattern:
 
-- Methods with a random initialization or random order of updates (`BioSFA`, `ISFA`, `SICA`, `ForeCA`, `BSSnonstat`, `LDS`) accept a `random_state` argument for reproducible results; `TCCA_Stiefel` uses a `seed` argument.
+- Methods with a random initialization or random order of updates (`BioSFA`, `ISFA`, `SICA`, `ForeCA`, `BSSnonstat`, `LDS`, `DFA`) accept a `random_state` argument for reproducible results; `TCCA_Stiefel` uses a `seed` argument.
 - The diffusion methods (`DMcov`, `DIG`) embed sliding windows of the time series (of length `window`, every `step` samples) rather than individual time points, so `fit_transform` returns one row per window and there is no separate `transform`.
 
 ## Citation
