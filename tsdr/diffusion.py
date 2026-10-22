@@ -55,8 +55,9 @@ class DMcov():
         Default: 1.
 
     sigma: float
-        The sigma parameter in the Gaussian (radial basis function - RBF) 
-        kernel.
+        The scale parameter of the Gaussian (radial basis function - RBF) 
+        kernel exp(-d^2 / sigma), where d is the covariance distance between 
+        two windows (sigma thus plays the role of a variance).
         Default: 2.0.
 
     distance: str
@@ -111,7 +112,8 @@ class DMcov():
     def _cov_distance_matrix(self, X):
 
         T, _ = X.shape
-        indices = range(0, T-  self.window, self.step)
+        # start indices of all windows that fit in the time series
+        indices = range(0, T - self.window + 1, self.step)
         G = np.zeros((len(indices), len(indices)))
         for i2, i in enumerate(indices):
             for j2, j in enumerate(indices):
@@ -194,8 +196,10 @@ class DMcov():
 
         Returns
         -------
-        X_new: ndarray, shape (n_samples, n_components)
-            A (possibly multivariate) time series of components.
+        X_new: ndarray, shape (n_windows, n_components)
+            A (possibly multivariate) time series of components, with one 
+            row per window (starting at samples 0, step, 2*step, ..., so 
+            n_windows = (n_samples - window) // step + 1).
         """
 
         self.fit(X)
@@ -250,7 +254,7 @@ class DIG():
 
     alpha: float
         The exponent to use in the adaptive Gaussian kernel.
-        Default: 1.0.
+        Default: 10.0.
 
     tmax: int
         The maximum number of diffusion steps used for the estimation of
@@ -285,7 +289,8 @@ class DIG():
     def _cov_distance_matrix(self, X):
 
         T, _ = X.shape
-        indices = range(0, T-  self.window, self.step)
+        # start indices of all windows that fit in the time series
+        indices = range(0, T - self.window + 1, self.step)
         G = np.zeros((len(indices), len(indices)))
         for i2, i in enumerate(indices):
             for j2, j in enumerate(indices):
@@ -397,8 +402,10 @@ class DIG():
 
         Returns
         -------
-        X_new: ndarray, shape (n_samples, n_components)
-            A (possibly multivariate) time series of components.
+        X_new: ndarray, shape (n_windows, n_components)
+            A (possibly multivariate) time series of components, with one 
+            row per window (starting at samples 0, step, 2*step, ..., so 
+            n_windows = (n_samples - window) // step + 1).
         """
 
         self.fit(X)

@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from sklearn.exceptions import ConvergenceWarning
 
-from tsdr.autocorrelation import TICA, TCCA_Stiefel, sPCA_dwt
+from tsdr.autocorrelation import TICA, CSA, TCCA_Stiefel, sPCA_dwt
 
 from helpers import subspace_cos, random_mix, ar1, corr2
 
@@ -89,3 +89,29 @@ def test_spca_dwt_pca_and_svd_agree(T, wavelet, whiten):
     # the two-component subspaces coincide (robust to rotation within the
     # subspace if the 2nd and 3rd singular values are close)
     assert np.all(subspace_cos(Y_pca, Y_svd) > 0.999)
+
+@pytest.mark.parametrize("lag", [np.int64(3), (1, 2, 3), [1, 2, 3],
+                                 np.array([1, 2, 3])])
+def test_csa_accepts_integer_and_sequence_lags(ar_sources, lag):
+    """An integer lag (including NumPy integers) means lags 1, ..., lag, and
+    any sequence of integers gives those lags."""
+    _, X = ar_sources
+    ref = CSA(n_components=2, lag=3, max_iters=50).fit(X).linear_transform_
+    W = CSA(n_components=2, lag=lag, max_iters=50).fit(X).linear_transform_
+    np.testing.assert_allclose(W, ref)
+
+
+def test_csa_default_lag_and_params(ar_sources):
+    _, X = ar_sources
+    model = CSA()
+    assert model.lag == 2
+    assert model._get_lags() == [1, 2]
+
+
+@pytest.mark.parametrize("lag, error", [(0, ValueError), ([1, 0], ValueError),
+                                        ([], ValueError), (1.5, TypeError),
+                                        ([1, 2.5], TypeError)])
+def test_csa_rejects_invalid_lags(ar_sources, lag, error):
+    _, X = ar_sources
+    with pytest.raises(error):
+        CSA(lag=lag).fit(X)

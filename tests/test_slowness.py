@@ -52,3 +52,15 @@ def test_biosfa_requires_lr_below_tau(slow_sources, lr, tau):
     _, X = slow_sources
     with pytest.raises(ValueError, match="lr must satisfy"):
         BioSFA(lr=lr, tau=tau).fit(X)
+
+
+def test_sfa_eigvals_match_component_slowness(slow_sources):
+    """eigvals_ is the derivative variance of each (unit-variance) slow
+    feature, in the same (ascending) order as the components."""
+    _, X = slow_sources
+    model = SFA(n_components=3).fit(X)
+    Y = model.transform(X)
+    assert model.eigvals_.shape == (X.shape[1],)
+    assert np.all(np.diff(model.eigvals_) > 0)
+    np.testing.assert_allclose(np.var(np.diff(Y, axis=0), axis=0, ddof=1),
+                               model.eigvals_[:3])

@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from tsdr.diffusion import DMcov
+from tsdr.diffusion import DMcov, DIG
 
 from helpers import corr2, random_mix
 
@@ -19,7 +19,7 @@ def drifting_mean():
     X, _ = random_mix(S, seed=1)
     window, step = 100, 40
     latent_w = np.array([latent[i:i + window].mean()
-                         for i in range(0, T - window, step)])
+                         for i in range(0, T - window + 1, step)])
     return X, latent_w, window, step
 
 
@@ -46,3 +46,16 @@ def test_dmcov_normalised_is_leading_nontrivial_eigenvector(drifting_mean):
     order = [i for i in np.argsort(-np.abs(lam)) if i != trivial]
     for i in range(2):
         assert corr2(Y[:, i], V[:, order[i]]) > 0.999
+
+
+@pytest.mark.parametrize("T, window, step", [(1000, 100, 40), (1000, 100, 50),
+                                             (1000, 100, 100)])
+@pytest.mark.parametrize("method", [DMcov, DIG])
+def test_windows_include_last_window(method, T, window, step):
+    """One window starts at each of 0, step, 2*step, ..., up to and including
+    the last start index that fits, T - window (when it is on the grid)."""
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(T, 3))
+    G = method(window=window, step=step)._cov_distance_matrix(X)
+    n = (T - window) // step + 1
+    assert G.shape == (n, n)

@@ -38,13 +38,15 @@ class DyCA():
     Parameters
     ----------
     n_components: int
-        The dimension (number of variables) of the time-series output.
-        This argument is ignored if eig_threshold is used.
+        The dimension (number of variables) of the time-series output. If 
+        eig_threshold is used, the output is truncated to n_components 
+        columns after the eigenvectors are selected by the threshold.
         Default: 1.
 
     eig_threshold: float in [0.0, 1.0]
         Select components based on eigenvalues that exceed eig_threshold,
-        which indicate the degree of (linear ODE) determinism.
+        which indicate the degree of (linear ODE) determinism. If None, all 
+        eigenvectors with eigenvalues <= 1 are used.
         Default: None.
 
     Attributes
@@ -53,10 +55,10 @@ class DyCA():
         The linear transformation that yields the DyCA components when applied 
         to the input time series X.
 
-    eigvals_: ndarray, shape (n_features)
-        The singular/eigen-values of the eigendecomposition step. The array
-        length (n_features) may be shortened in case of a singular covariance
-        matrix.
+    eigvals_: ndarray, shape (n_eigvals,)
+        The generalised eigenvalues that are <= 1, ordered by decreasing 
+        modulus (eigenvalues > 1 arise from the singularity of C0 and are 
+        excluded, so n_eigvals <= n_features).
     """
 
     def __init__(self, n_components=1, eig_threshold=None):

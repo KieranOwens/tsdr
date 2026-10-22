@@ -47,8 +47,10 @@ class SFA():
         The linear transformation that yields the SFA components when applied 
         to the input time series X.
 
-    eigvals_: ndarray, shape (n_features)
-        The singular/eigen-values of the eigendecomposition step.
+    eigvals_: ndarray, shape (n_features,)
+        The variance of the temporal derivative (difference) of each 
+        (unit-variance) slow feature, in ascending order (slowest first), 
+        i.e., in the same order as the components.
     """
 
     def __init__(self, n_components=1):
@@ -84,8 +86,9 @@ class SFA():
         # fit a PCA model to the derivatives
         pca_diff = PCA().fit(Xdot)
 
-        # singular values
-        self.eigvals_ = pca_diff.singular_values_
+        # variance of the derivative of each slow feature, in ascending 
+        # order to match the order of the components (slowest first)
+        self.eigvals_ = pca_diff.explained_variance_[::-1]
 
         # get linear transformation
         transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)

@@ -9,6 +9,7 @@
 # sPCA_dwt - Spectral Principal Component Analysis using the
 #            discrete wavelet transform
 
+import numbers
 import warnings
 
 import numpy as np
@@ -510,10 +511,15 @@ class CSA():
         The dimension (number of variables) of the time-series output.
         Default: 1.
 
-    lag: int or list
-        The maximum time lag at which to compute autocorrelation,
-        or else a list of specified lags.
-        Default: 1.
+    lag: int or sequence of int
+        The maximum time lag at which to compute autocorrelation (i.e., lags 
+        1, ..., lag), or else a sequence (e.g., list, tuple or array) of 
+        specified lags. All lags must be positive integers.
+        Default: 2.
+
+    max_iters: int
+        The number of iterations of the joint low-rank approximation.
+        Default: 1000.
 
     Attributes
     ----------
@@ -525,11 +531,30 @@ class CSA():
     def __init__(self, n_components=1, lag=2, max_iters=1000):
 
         self.n_components = n_components
-        if isinstance(lag, int):
-            self.lags = range(1, lag+1)
-        elif isinstance(lag, list):
-            self.lags = list(lag)
+        self.lag = lag
         self.max_iters = max_iters
+
+    def _get_lags(self):
+        """The list of lags: 1, ..., lag for an integer lag (including NumPy 
+        integers), or the given lags for a sequence."""
+
+        if isinstance(self.lag, numbers.Integral):
+            lags = list(range(1, int(self.lag) + 1))
+        else:
+            try:
+                lags = [int(l) for l in self.lag]
+            except TypeError:
+                raise TypeError(f"lag must be an integer or a sequence of "
+                                f"integers (got {self.lag!r}).") from None
+            if not all(isinstance(l, numbers.Integral) for l in self.lag):
+                raise TypeError(f"lag must be an integer or a sequence of "
+                                f"integers (got {self.lag!r}).")
+
+        if len(lags) == 0 or min(lags) < 1:
+            raise ValueError(f"All lags must be positive integers (got "
+                             f"{self.lag!r}).")
+
+        return lags
 
     def fit(self, X, y=None):
         """Fit the model to X
@@ -560,8 +585,8 @@ class CSA():
         # list of covariance matrices at different time lags
         Ctensor = []
 
-        # iterate over spacified lags
-        for lag in self.lags:
+        # iterate over specified lags
+        for lag in self._get_lags():
 
             # compute the time-lagged covariance matrix
             Ctau = (Xw[:-lag,:].T @ Xw[lag:,:])/(T - lag - 1)
