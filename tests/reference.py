@@ -97,3 +97,29 @@ def dmd_ref(X):
     Phi = X1 @ Vh.T / s @ W / lam
     order = np.argsort(-np.abs(lam), kind="stable")
     return lam[order], Phi[:, order]
+
+
+def lds_posterior_ref(Y, A, Q, C, R, mu0, V0):
+    """Exact posterior of the latent states of a linear dynamical system
+    (Ghahramani & Hinton, 1996) by direct Gaussian conditioning of the joint
+    prior of x_1, ..., x_T on Y (feasible for short series only). Returns the
+    posterior means (T, d) and covariance (T*d, T*d), in which block (t, s) is
+    Cov(x_t, x_s | Y)."""
+    T, d = len(Y), A.shape[0]
+    P = [V0]
+    for _ in range(1, T):
+        P.append(A @ P[-1] @ A.T + Q)
+    mu = [mu0]
+    for _ in range(1, T):
+        mu.append(A @ mu[-1])
+    mu = np.concatenate(mu)
+    S = np.zeros((T * d, T * d))
+    for s in range(T):
+        for t in range(s, T):
+            blk = np.linalg.matrix_power(A, t - s) @ P[s]
+            S[t * d:(t + 1) * d, s * d:(s + 1) * d] = blk
+            S[s * d:(s + 1) * d, t * d:(t + 1) * d] = blk.T
+    Cb, Rb = np.kron(np.eye(T), C), np.kron(np.eye(T), R)
+    G = S @ Cb.T @ np.linalg.inv(Cb @ S @ Cb.T + Rb)
+    mean = mu + G @ (Y.ravel() - Cb @ mu)
+    return mean.reshape(T, d), S - G @ Cb @ S

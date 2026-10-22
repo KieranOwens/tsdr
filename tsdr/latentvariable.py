@@ -130,8 +130,9 @@ class LDS():
             x_smooth[t] = x_filt[t] + J @ (x_smooth[t + 1] - x_pred[t + 1])
             # Eq. (33), smoothed covariance
             V_smooth[t] = V_filt[t] + J @ (V_smooth[t + 1] - V_pred[t + 1]) @ J.T
-            # Eq. (34), lag-one covariance
-            Cov[t] = J @ V_smooth[t + 1]
+            # Eq. (34), lag-one covariance Cov(x_{t+1}, x_t | Y) = V_{t+1}^T J_t^T
+            # (J_t V_{t+1}^T is its transpose, Cov(x_t, x_{t+1} | Y))
+            Cov[t] = V_smooth[t + 1] @ J.T
 
         # ----- Update expectations to use in the M-Step -----
         # Eq. (10), E[x_t]
