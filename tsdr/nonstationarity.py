@@ -10,9 +10,12 @@
 # WaSSAr - Wasserstein SSA using the Root-Frechet mean
 # BSSnonstat - Blind Source Separation via nonstationarity of variances
 
+import warnings
+
 import numpy as np
 import scipy
 from sklearn.decomposition import PCA
+from sklearn.exceptions import ConvergenceWarning
 from sklearn.utils import check_random_state
 
 from ._whitening import fit_whitening
@@ -667,12 +670,14 @@ class WaSSAf():
 
     epsilon: float
         The convergence parameter for iterative approximation of the Frechet 
-        mean.
+        mean (Algorithm 1 stops once the Frobenius norm of the change in the 
+        mean falls below epsilon).
         Default: 1e-4.
 
     max_iters: int
         The maximum number of iterations for approximation of the Frechet 
-        mean.
+        mean. A ConvergenceWarning is raised if the iteration has not 
+        converged (see epsilon) after max_iters iterations.
         Default: 1000.
 
     nonstationary: bool
@@ -685,6 +690,10 @@ class WaSSAf():
     linear_transform_: ndarray, shape (n_features, n_components)
         The linear transformation that yields the WaSSAf components when 
         applied to the input time series X.
+
+    frechet_mean_: ndarray, shape (n_features, n_features)
+        The Frechet mean (Wasserstein-2 barycenter) of the window covariance 
+        matrices of the whitened data, computed by Algorithm 1.
     """
 
     def __init__(self, n_components=1, n_windows=10, 
@@ -723,20 +732,32 @@ class WaSSAf():
         # Root-Frechet mean
         S_r_root, C0_list = self._compute_S_r_root(X)
 
-        # Frechet mean
-        Sw = S_r_root
+        # Frechet mean (Wasserstein-2 barycenter), Kaltenstadler et al. (2018)
+        # Algorithm 1, initialised at the root-Frechet mean, eq. (15):
+        # Sigma_R = (1/|E| sum_e Sigma_e^{1/2})^2
+        Sw = S_r_root @ S_r_root
         delta = self.epsilon
         iter = 0
         while delta >= self.epsilon and iter < self.max_iters:
             iter += 1
+            Sw_root = np.real(scipy.linalg.sqrtm(Sw))
+            Sw_root_inv = np.linalg.inv(Sw_root)
             Ti = np.zeros((D, D))
-            Sinv = np.linalg.pinv(Sw)
             for C0i in C0_list:
-                Ti += Sinv @ scipy.linalg.sqrtm(Sw @ C0i @ Sw) @ Sinv
-            Ti = Ti/self.n_windows
+                Ti += Sw_root_inv @ np.real(
+                    scipy.linalg.sqrtm(Sw_root @ C0i @ Sw_root)) @ Sw_root_inv
+            Ti = Ti / self.n_windows
             Snew = Ti @ Sw @ Ti
             delta = np.linalg.norm(Sw - Snew)
             Sw = Snew
+
+        if delta >= self.epsilon:
+            warnings.warn(f"The Frechet mean did not converge after "
+                          f"{self.max_iters} iterations (change {delta:.2e} "
+                          f">= epsilon = {self.epsilon}). Consider increasing "
+                          "max_iters.", ConvergenceWarning)
+
+        self.frechet_mean_ = Sw
 
         # construct matrix S
         S = np.zeros((D, D))

@@ -2,6 +2,7 @@
 original papers, used to check the values returned by tsdr."""
 
 import numpy as np
+import scipy.linalg
 
 from helpers import whiten_ref
 
@@ -123,3 +124,20 @@ def lds_posterior_ref(Y, A, Q, C, R, mu0, V0):
     G = S @ Cb.T @ np.linalg.inv(Cb @ S @ Cb.T + Rb)
     mean = mu + G @ (Y.ravel() - Cb @ mu)
     return mean.reshape(T, d), S - G @ Cb @ S
+
+
+def wassa_S_ref(X, n_windows, barycenter):
+    """The WaSSA matrix S of Kaltenstadler et al. (2018), eq. (21), for the
+    given barycenter, with window covariances computed as in tsdr (second
+    moments of the windows of X)."""
+    sqrtm = lambda A: np.real(scipy.linalg.sqrtm(A))
+    T, D = X.shape
+    L = T // n_windows
+    S = np.zeros((D, D))
+    for i in range(n_windows):
+        Xi = X[i * L:(i + 1) * L]
+        C = Xi.T @ Xi / (len(Xi) - 1)
+        Cr = sqrtm(C)
+        S += (np.outer(Xi.mean(0), Xi.mean(0)) + C + barycenter
+              - 2 * sqrtm(Cr @ barycenter @ Cr))
+    return S
