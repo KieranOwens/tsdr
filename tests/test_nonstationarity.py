@@ -6,10 +6,10 @@ import scipy.linalg
 from sklearn.exceptions import ConvergenceWarning
 
 from tsdr._whitening import fit_whitening
-from tsdr.nonstationarity import BSSnonstat, WaSSAf
+from tsdr.nonstationarity import BSSnonstat, WaSSAf, WaSSAr
 
 from helpers import corr2, random_mix
-from reference import wassa_S_ref
+from reference import wassa_S_ref, wassar_S_ref
 
 
 @pytest.fixture(scope="module")
@@ -68,8 +68,7 @@ def test_wassaf_frechet_mean_is_wasserstein_barycenter(strongly_nonstationary_da
     sqrtm = lambda A: np.real(scipy.linalg.sqrtm(A))
     bary = model.frechet_mean_
     L = len(Xw) // 10
-    Cs = [Xw[i * L:(i + 1) * L].T @ Xw[i * L:(i + 1) * L] / (L - 1)
-          for i in range(10)]
+    Cs = [np.cov(Xw[i * L:(i + 1) * L], rowvar=False) for i in range(10)]
     R = sqrtm(bary)
     fixed_point = np.mean([sqrtm(R @ C @ R) for C in Cs], axis=0)
     np.testing.assert_allclose(bary, fixed_point, atol=1e-8)
@@ -79,3 +78,28 @@ def test_wassaf_frechet_mean_is_wasserstein_barycenter(strongly_nonstationary_da
 def test_wassaf_warns_if_frechet_mean_not_converged(strongly_nonstationary_data):
     with pytest.warns(ConvergenceWarning):
         WaSSAf(epsilon=1e-12, max_iters=1).fit(strongly_nonstationary_data)
+
+
+def test_wassar_matches_eq23(strongly_nonstationary_data):
+    Xw = strongly_nonstationary_data
+    S = WaSSAr(n_windows=10)._compute_S(Xw)
+    np.testing.assert_allclose(np.real(S), wassar_S_ref(Xw, 10), atol=1e-8)
+
+
+@pytest.mark.parametrize("method", [WaSSAf, WaSSAr])
+def test_wassa_window_mean_enters_only_through_mean_term(
+        strongly_nonstationary_data, method):
+    """Each window is modelled as N(mu_e, Sigma_e) (eq. 19), so shifting the
+    mean of one window changes S only through mu_e mu_e^T, and the
+    covariance terms (and the barycenter) are unaffected."""
+    Xw = strongly_nonstationary_data
+    L = len(Xw) // 10
+    shift = np.array([3.0, -2.0, 0.0, 1.0, 0.5])
+    Xs = Xw.copy()
+    Xs[2 * L:3 * L] += shift
+    mu = Xw[2 * L:3 * L].mean(0)
+    kw = dict(n_windows=10, epsilon=1e-10) if method is WaSSAf else dict(n_windows=10)
+    dS = method(**kw)._compute_S(Xs) - method(**kw)._compute_S(Xw)
+    np.testing.assert_allclose(
+        np.real(dS), np.outer(mu + shift, mu + shift) - np.outer(mu, mu),
+        atol=1e-6)

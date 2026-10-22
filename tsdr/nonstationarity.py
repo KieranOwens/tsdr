@@ -717,7 +717,11 @@ class WaSSAf():
         for i in range(self.n_windows):
             Xi = X[i*(T//self.n_windows):(i+1)*(T//self.n_windows),:]
             Ti = Xi.shape[0]
-            C0i = (1/(Ti - 1)) * (Xi.T @ Xi)
+            # window covariance about the window mean (the windows are
+            # Gaussians N(mu_i, C0i), eq. (19), so the mean enters S
+            # only through the mu_i mu_i^T term)
+            Xc = Xi - np.mean(Xi, axis=0)
+            C0i = (1/(Ti - 1)) * (Xc.T @ Xc)
             C0_list.append(C0i)
             S_r_root += (1/self.n_windows) * scipy.linalg.sqrtm(C0i)
 
@@ -766,7 +770,11 @@ class WaSSAf():
             Ti = Xi.shape[0]
 
             mu_i = np.mean(Xi, axis=0)
-            C0i = (1/(Ti - 1)) * (Xi.T @ Xi)
+            # window covariance about the window mean (the windows are
+            # Gaussians N(mu_i, C0i), eq. (19), so the mean enters S
+            # only through the mu_i mu_i^T term)
+            Xc = Xi - np.mean(Xi, axis=0)
+            C0i = (1/(Ti - 1)) * (Xc.T @ Xc)
             C0i_root = scipy.linalg.sqrtm(C0i)
 
             inner_term = scipy.linalg.sqrtm(C0i_root @ Sw @ C0i_root)
@@ -917,7 +925,11 @@ class WaSSAr():
         for i in range(self.n_windows):
             Xi = X[i*(T//self.n_windows):(i+1)*(T//self.n_windows),:]
             Ti = Xi.shape[0]
-            C0i = (1/(Ti - 1)) * (Xi.T @ Xi)
+            # window covariance about the window mean (the windows are
+            # Gaussians N(mu_i, C0i), eq. (19), so the mean enters S
+            # only through the mu_i mu_i^T term)
+            Xc = Xi - np.mean(Xi, axis=0)
+            C0i = (1/(Ti - 1)) * (Xc.T @ Xc)
             S_r_root += (1/self.n_windows) * scipy.linalg.sqrtm(C0i)
 
         # Construct matrix S
@@ -927,7 +939,11 @@ class WaSSAr():
             Ti = Xi.shape[0]
 
             mu_i = np.mean(Xi, axis=0)
-            C0i = (1/(Ti - 1)) * (Xi.T @ Xi)
+            # window covariance about the window mean (the windows are
+            # Gaussians N(mu_i, C0i), eq. (19), so the mean enters S
+            # only through the mu_i mu_i^T term)
+            Xc = Xi - np.mean(Xi, axis=0)
+            C0i = (1/(Ti - 1)) * (Xc.T @ Xc)
 
             inner_term = scipy.linalg.sqrtm(C0i) - S_r_root
             S += np.outer(mu_i, mu_i) + inner_term @ inner_term.T

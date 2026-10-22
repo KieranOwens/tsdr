@@ -128,16 +128,30 @@ def lds_posterior_ref(Y, A, Q, C, R, mu0, V0):
 
 def wassa_S_ref(X, n_windows, barycenter):
     """The WaSSA matrix S of Kaltenstadler et al. (2018), eq. (21), for the
-    given barycenter, with window covariances computed as in tsdr (second
-    moments of the windows of X)."""
+    given barycenter, with each window modelled as N(mu_e, Sigma_e) (sample
+    mean and covariance of the window)."""
     sqrtm = lambda A: np.real(scipy.linalg.sqrtm(A))
     T, D = X.shape
     L = T // n_windows
     S = np.zeros((D, D))
     for i in range(n_windows):
         Xi = X[i * L:(i + 1) * L]
-        C = Xi.T @ Xi / (len(Xi) - 1)
+        C = np.cov(Xi, rowvar=False)
         Cr = sqrtm(C)
         S += (np.outer(Xi.mean(0), Xi.mean(0)) + C + barycenter
               - 2 * sqrtm(Cr @ barycenter @ Cr))
     return S
+
+
+def wassar_S_ref(X, n_windows):
+    """The approximate WaSSA matrix S of Kaltenstadler et al. (2018),
+    eq. (23), with the root-Frechet mean of eq. (15), and each window
+    modelled as N(mu_e, Sigma_e)."""
+    sqrtm = lambda A: np.real(scipy.linalg.sqrtm(A))
+    T, D = X.shape
+    L = T // n_windows
+    wins = [X[i * L:(i + 1) * L] for i in range(n_windows)]
+    roots = [sqrtm(np.cov(Xi, rowvar=False)) for Xi in wins]
+    R = np.mean(roots, axis=0)
+    return sum(np.outer(Xi.mean(0), Xi.mean(0)) + (Cr - R) @ (Cr - R).T
+               for Xi, Cr in zip(wins, roots))
