@@ -7,7 +7,10 @@
 # DiCCA - Dynamic inner Canonical Correlation Analysis
 
 import numpy as np
+import scipy
 from sklearn.decomposition import PCA
+
+from ._whitening import fit_whitening
 
 from sklearn.linear_model import LinearRegression
 from sklearn.kernel_ridge import KernelRidge
@@ -28,11 +31,12 @@ class TLPC():
     information see Bialek & Tishby (1999).
 
     The steps involved in TLPC are: (1) whiten the data, (2) compute the
-    covariance (C0) and time-lagged covariance (Clag) matrices,
-    (3) form Sigma = Clag C0^-1, (4) apply eigendecomposition to 
-    I - Sigma^2 and select the eigenvectors corresponding to the least
-    eigenvalues, and (5) apply the eigenvector linear transformation
-    to the whitened data.
+    covariance (C0) and time-lagged covariance (Ctau) matrices,
+    (3) form the covariance of the past conditioned on the future,
+    C0 - Ctau C0^-1 Ctau^T (I - Ctau Ctau^T for whitened data), 
+    (4) apply generalized eigendecomposition relative to C0 and select the
+    eigenvectors corresponding to the least eigenvalues, and (5) apply the
+    eigenvector linear transformation to the whitened data.
 
     Reference: Creutzik & Sprekeler (2008) Predictive coding and the slowness
     principle, Neural Comp.
@@ -80,28 +84,36 @@ class TLPC():
         T, _ = X.shape
 
         # fit a PCA whitening model
-        pca_white = PCA(whiten=True).fit(X)
+        pca_white = fit_whitening(X)
 
         # whiten the data
         Xw = pca_white.transform(X)
 
-        # compute the zero-lag covariance matrix
-        C0 = Xw[:-1,:].T @ Xw[:-1,:]/(T - 1)
+        # past (X0) and future (Xlag) samples
+        X0 = Xw[:-self.lag,:]
+        Xlag = Xw[self.lag:,:]
+
+        # compute the zero-lag covariance matrices of the past and future
+        C0 = X0.T @ X0/(T - 1 - self.lag)
+        Clag0 = Xlag.T @ Xlag/(T - 1 - self.lag)
 
         # compute the time-lagged covariance matrix
-        Ctau = Xw[:-self.lag,:].T @ Xw[self.lag:,:]/(T - 1 - self.lag)
+        Ctau = X0.T @ Xlag/(T - 1 - self.lag)
 
-        # compute Sigma from Creutzig et al (2008)
-        Sigma = Ctau @ np.linalg.pinv(C0)
+        # covariance of the past conditioned on the future from 
+        # Creutzig & Sprekeler (2008), C0 - Ctau Clag0^-1 Ctau^T, which is 
+        # I - Ctau Ctau^T for whitened data
+        Ccond = C0 - Ctau @ np.linalg.pinv(Clag0) @ Ctau.T
+        Ccond = 0.5 * (Ccond + Ccond.T)
 
-        # eigendecomposition of I - Sigma^2
-        eigvals, eigvecs = np.linalg.eig(np.eye(Sigma.shape[0]) - Sigma @ Sigma)
-        eigvecs_sorted = eigvecs[:,np.argsort(eigvals)]
+        # generalized eigendecomposition Ccond w = lambda C0 w 
+        # (eigenvalues in ascending order)
+        _, eigvecs = scipy.linalg.eigh(Ccond, C0)
 
         # get linear transformation
         transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
-        transform2 = eigvecs_sorted[:,:self.n_components]
-        self.linear_transform_ = np.real(transform1 @ transform2)
+        transform2 = eigvecs[:,:self.n_components]
+        self.linear_transform_ = transform1 @ transform2
 
         return self
 
@@ -189,8 +201,10 @@ class PrCA():
     model: str
         Specify the predictive model with options 'diff', 'linear_reg', and
         'kernel_ridge'. 'diff' uses naive differencing and is equivalent to
-        Slow Feature Analysis (SFA) for lag=1. 'linear_reg' uses multivariate
-        linear regression. 'kernel_ridge' uses kernel ridge regression.
+        Slow Feature Analysis (SFA) for lag=1 (with whiten=True). 
+        'linear_reg' uses multivariate linear regression. 'kernel_ridge' uses
+        kernel ridge regression. Both models predict all variables at time
+        t+lag from the previous p time steps of all variables.
         Default: diff.
 
     **kwargs: dictionary
@@ -234,8 +248,9 @@ class PrCA():
     def _get_prediction_errors(self, X):
         """ Compute prediction errors"""
 
-        # data dimensions
-        T, D = X.shape
+        if self.model not in ('diff', 'linear_reg', 'kernel_ridge'):
+            raise ValueError(f"Unknown model '{self.model}'. Options are "
+                             "'diff', 'linear_reg', and 'kernel_ridge'.")
 
         # simple differencing (equivalent to SFA)
         if self.model == 'diff':
@@ -244,26 +259,26 @@ class PrCA():
 
         else:
 
-            # prediction errors have T - (p + lag - 1) rows
-            E = np.zeros((T - (self.p + self.lag - 1), D))
+            # predict the full state X_{t+lag} from the p previous states of
+            # all variables (Xt, Xt-1, ..., Xt-p+1), so that the prediction 
+            # errors E are those of the multivariate time series and w^T E 
+            # is the prediction error of the component w^T X
+            # (prediction errors have T - (p + lag - 1) rows)
 
-            for i in range(D):
+            # data to use for predictions
+            X_p = self._tde(X[:-self.lag,:], self.p, 1)   # drop last `lag` points
 
-                # data to use for predictions
-                x = X[:,i]
-                x_p = self._tde(x[:-self.lag].reshape(-1,1), self.p, 1)   # drop last `lag` points
+            # data to predict
+            Y = X[self.p - 1 + self.lag:,:]
 
-                # data to predict
-                y = x[self.p - 1 + self.lag:]  
+            # fit a model using X_p and Y
+            if self.model == 'linear_reg':
 
-                # fit a model using x_p and y
-                if self.model == 'linear_reg':
-                    
-                    E[:,i] = y - LinearRegression(**self.kwargs).fit(x_p, y).predict(x_p)
+                E = Y - LinearRegression(**self.kwargs).fit(X_p, Y).predict(X_p)
 
-                elif self.model == 'kernel_ridge':
+            elif self.model == 'kernel_ridge':
 
-                    E[:,i] = y - KernelRidge(**self.kwargs).fit(x_p, y).predict(x_p)
+                E = Y - KernelRidge(**self.kwargs).fit(X_p, Y).predict(X_p)
 
         return E
 
@@ -286,7 +301,7 @@ class PrCA():
 
         # fit a PCA whitening model
         if self.whiten:
-            pca_white = PCA(whiten=True).fit(X)
+            pca_white = fit_whitening(X)
             X = pca_white.transform(X)
 
         # whiten the data
@@ -405,9 +420,16 @@ class DiCCA():
         """
 
         # whitening model and transformation
-        pca_white = PCA(whiten=True).fit(X)
+        pca_white = fit_whitening(X)
         Xw = pca_white.transform(X)
         transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
+
+        # data dimensions
+        T, D = Xw.shape
+
+        # the deflated data are Xd = Xw @ deflation
+        Xd = Xw
+        deflation = np.eye(D)
 
         # collection projection vectors
         W = []
@@ -415,8 +437,11 @@ class DiCCA():
         # iteratively compute each linear transformation
         for nb in range(self.n_components):
 
-            # SVD
-            U, S, V = np.linalg.svd(Xw, full_matrices=False)
+            # SVD, Xd = U diag(S) V, dropping the null directions left by
+            # previous deflation steps
+            U, S, V = np.linalg.svd(Xd, full_matrices=False)
+            keep = S > S[0] * max(T, D) * np.finfo(float).eps
+            U, S, V = U[:,keep], S[keep], V[keep,:]
 
             # time-lagged matrices used for calculations
             Us = U[self.s:,:]
@@ -432,19 +457,24 @@ class DiCCA():
                 Utilde = Us - Ubeta
                 w = PCA().fit(Utilde).components_.T[:,-1]
                 t = U @ w
-                Ts = [beta[0] * U_list[0] @ w]
-                for i in range(1, self.s):
-                    Ts.append(Ts[-1] + beta[i] * U_list[i] @ w)
-                Ts = np.concatenate([t.reshape(-1,1) for t in Ts], axis=1)
+                # least-squares AR coefficients of the latent score t on its
+                # lagged values Ts = [t_{k-1}, ..., t_{k-s}] (Dong & Qin, 2018)
+                Ts = np.concatenate([(U_list[i] @ w).reshape(-1,1) 
+                                     for i in range(self.s)], axis=1)
                 beta = np.linalg.pinv(Ts.T @ Ts) @ Ts.T @ Us @ w
 
-            # obtain transformation via composition of PCA whitening, SVA, and w
-            W.append((transform1 @ V.T @ w).reshape(-1,1))
+            # weights r such that t = Xd @ r (since U = Xd V^T diag(1/S))
+            r = V.T @ (w / S)
 
-            # deflation step
+            # obtain transformation via composition of PCA whitening, 
+            # deflation, and r
+            W.append((transform1 @ deflation @ r).reshape(-1,1))
+
+            # deflation step, Xd <- Xd - t p^T = Xd (I - r p^T)
             if nb + 1 < self.n_components:
-                p = Xw.T @ t / (t.T @ t)
-                Xw = Xw - np.outer(t, p)
+                p = Xd.T @ t / (t.T @ t)
+                Xd = Xd - np.outer(t, p)
+                deflation = deflation @ (np.eye(D) - np.outer(r, p))
 
         self.linear_transform_ = np.concatenate(W, axis=1)
 

@@ -9,6 +9,8 @@ import numpy as np
 from scipy.linalg import eig
 from sklearn.decomposition import PCA
 
+from ._whitening import fit_whitening
+
 ###############################################################################
 ###############################################################################
 # DyCA - Dynamical Component Analysis
@@ -83,7 +85,7 @@ class DyCA():
         T, _ = X.shape
 
         # fit a PCA whitening model
-        pca_white = PCA(whiten=True).fit(X)
+        pca_white = fit_whitening(X)
 
         # whiten the data
         X = pca_white.transform(X)
@@ -231,7 +233,7 @@ class DMD():
         if self.whiten:
 
             # fit a PCA whitening model
-            pca_white = PCA(whiten=True).fit(X)
+            pca_white = fit_whitening(X)
 
             # whiten the data
             X = pca_white.transform(X)

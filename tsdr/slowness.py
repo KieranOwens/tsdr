@@ -9,6 +9,8 @@ import numpy as np
 import scipy
 from sklearn.decomposition import PCA
 
+from ._whitening import fit_whitening
+
 ###############################################################################
 ###############################################################################
 # SFA - Slow Feature Analysis
@@ -69,7 +71,7 @@ class SFA():
         """
 
         # fit a PCA whitening model
-        pca_white = PCA(whiten=True).fit(X)
+        pca_white = fit_whitening(X)
 
         # whiten the data
         Xw = pca_white.transform(X)
@@ -186,7 +188,7 @@ class BioSFA():
             Returns self.
         """
 
-        pca_white = PCA(whiten=True).fit(X)
+        pca_white = fit_whitening(X)
         Xw = pca_white.transform(X)
 
         T, D = Xw.shape

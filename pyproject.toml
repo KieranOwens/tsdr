@@ -22,9 +22,15 @@ dependencies = [
     "kneed"
 ]
 
+[project.optional-dependencies]
+test = ["pytest"]
+
 [project.urls]
 "GitHub Repository (tsdr)" = "https://github.com/KieranOwens/tsdr"
 
 [build-system]
 requires = ["pdm-backend"]
 build-backend = "pdm.backend"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
