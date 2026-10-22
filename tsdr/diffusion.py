@@ -4,6 +4,7 @@
 # Contains:
 # DMcov - Temporal Laplacian Eigenmaps using covariance distance
 # DIG - Dynamical Information Geometry
+# NLSA - Nonlinear Laplacian Spectral Analysis
 
 import numpy as np
 import scipy.linalg
@@ -406,6 +407,182 @@ class DIG():
             A (possibly multivariate) time series of components, with one 
             row per window (starting at samples 0, step, 2*step, ..., so 
             n_windows = (n_samples - window) // step + 1).
+        """
+
+        self.fit(X)
+        
+        return self.components
+
+###############################################################################
+###############################################################################
+# NLSA - Nonlinear Laplacian Spectral Analysis
+###############################################################################
+###############################################################################
+
+class NLSA():
+    """
+    Nonlinear Laplacian Spectral Analysis (NLSA).
+
+    NLSA is a nonlinear TSDR method for extracting temporal modes from a 
+    multivariate time series. Like singular spectrum analysis (SSA), it 
+    applies a singular value decomposition (SVD) to the time-lagged embedding
+    of the data, but with the temporal patterns restricted to the leading 
+    eigenfunctions of a Laplacian on the data manifold in embedding space, 
+    which capture its nonlinear geometry and so can reveal intermittent and 
+    low-variance patterns that SSA misses.
+
+    The steps involved in NLSA are: (1) form the time-lagged embedding of the
+    data with q lags, (2) build a Gaussian kernel on the b nearest neighbours
+    of each embedded sample, scaled by the local velocity (the distance 
+    between consecutive embedded samples), and normalise it to a diffusion 
+    map transition matrix P with invariant measure mu (Coifman & Lafon, 
+    2006), (3) compute the l leading eigenvectors phi of P (the Laplacian 
+    eigenfunctions), (4) compute the components of the linear operator from 
+    the eigenfunctions to embedding space, A = X diag(mu) phi, and its SVD 
+    A = U S V^T, and (5) return the temporal modes phi V, ordered by 
+    decreasing singular value.
+
+    The temporal modes are computed for the embedded samples with a 
+    preceding sample (needed for the local velocity), i.e., for time points 
+    q, ..., n_samples - 1, so the output has n_samples - q rows.
+
+    Reference: Giannakis & Majda (2012) Nonlinear Laplacian spectral analysis
+    for time series with intermittency and low-frequency variability, PNAS 
+    (SI Appendix, Algorithms S1 and S2).
+
+    Parameters
+    ----------
+    n_components: int
+        The dimension (number of variables) of the time-series output.
+        Default: 1.
+
+    q: int
+        The lag window, i.e., the number of time points in each embedded 
+        sample.
+        Default: 10.
+
+    epsilon: float
+        The width of the Gaussian kernel (relative to the local velocities).
+        Default: 1.0.
+
+    n_neighbours: int
+        The number of nearest neighbours of each embedded sample in the 
+        kernel (b).
+        Default: 50.
+
+    n_eigenfunctions: int
+        The number of Laplacian eigenfunctions (l), which must be at least 
+        n_components.
+        Default: 20.
+
+    Attributes
+    ----------
+    components: ndarray, shape (n_samples - q, n_components)
+        The temporal modes.
+
+    singular_values_: ndarray, shape (n_components,)
+        The singular values of the temporal modes, in decreasing order.
+
+    measure_: ndarray, shape (n_samples - q,)
+        The invariant measure mu of the diffusion map (Riemannian measure), 
+        with respect to which the temporal modes are orthonormal.
+    """
+
+    def __init__(self, n_components=1, q=10, epsilon=1.0, n_neighbours=50, 
+                 n_eigenfunctions=20):
+
+        self.n_components = n_components
+        self.q = q
+        self.epsilon = epsilon
+        self.n_neighbours = n_neighbours
+        self.n_eigenfunctions = n_eigenfunctions
+
+    def fit(self, X, y=None):
+        """Fit the model to X
+
+        Parameters
+        ----------
+        X : ndarray, shape (n_samples, n_features)
+            A multivariate time series of shape (n_samples, n_features).
+
+        y : None
+            Ignored. Used to comply with the scikit-learn API.
+
+        Returns
+        -------
+        self : object
+            Returns self.
+        """
+
+        # mean centering
+        X = X - np.mean(X, axis=0)
+
+        # time-lagged embedding: row j is [x_{j+q-1}, x_{j+q-2}, ..., x_j], 
+        # Algorithm S1 lines 1-9
+        T, _ = X.shape
+        E = np.column_stack([X[self.q - 1 - i:T - i,:] for i in range(self.q)])
+
+        # local velocity in embedding space, Algorithm S2 lines 1-5, for the
+        # embedded samples with a preceding sample
+        xi = np.linalg.norm(E[1:,:] - E[:-1,:], axis=1)
+        E = E[1:,:]
+        s = E.shape[0]
+
+        # Gaussian kernel on the b nearest neighbours of each sample, scaled 
+        # by the local velocities, and symmetrised, Algorithm S2 lines 6-22
+        sq_dist = scipy.spatial.distance.cdist(E, E, 'sqeuclidean')
+        b = min(self.n_neighbours, s)
+        neighbours = np.argpartition(sq_dist, b - 1, axis=1)[:,:b]
+        rows = np.repeat(np.arange(s), b)
+        cols = neighbours.ravel()
+        W = np.zeros((s, s))
+        W[rows, cols] = np.exp(-sq_dist[rows, cols] / (self.epsilon * xi[rows] * xi[cols]))
+        W = np.maximum(W, W.T)
+
+        # diffusion map normalisation W_ij / (Q_i Q_j) and degrees Q, 
+        # giving the transition matrix P = diag(Q)^-1 W and the invariant 
+        # measure mu = Q / sum(Q), Algorithm S2 lines 24-42
+        Q = W.sum(axis=0)
+        W = W / np.outer(Q, Q)
+        Q = W.sum(axis=1)
+        mu = Q / Q.sum()
+        self.measure_ = mu
+
+        # leading l eigenvectors phi of P, computed from the symmetric matrix
+        # diag(Q)^-1/2 W diag(Q)^-1/2 with the same eigenvalues, and 
+        # normalised so that sum_t mu_t phi_t^2 = 1 (eigenvalues in ascending 
+        # order)
+        l = self.n_eigenfunctions
+        Wsym = W / np.sqrt(np.outer(Q, Q))
+        _, eigvecs = scipy.linalg.eigh(Wsym, subset_by_index=[s - l, s - 1])
+        phi = eigvecs[:,::-1] / np.sqrt(Q[:,None])
+        phi = phi / np.sqrt(mu @ phi**2)
+
+        # linear operator components A = X diag(mu) phi and its SVD, and the 
+        # temporal modes phi V, Algorithm S1 lines 15-28
+        A = E.T @ (mu[:,None] * phi)
+        _, sigma, Vt = np.linalg.svd(A, full_matrices=False)
+        self.singular_values_ = sigma[:self.n_components]
+        self.components = phi @ Vt.T[:,:self.n_components]
+
+        return self
+
+    def fit_transform(self, X, y=None):
+        """Fit the model to X and apply dimension reduction to X.
+
+        Parameters
+        ----------
+        X : ndarray, shape (n_samples, n_features)
+            A multivariate time series of shape (n_samples, n_features).
+
+        y : None
+            Ignored. Used to comply with the scikit-learn API.
+
+        Returns
+        -------
+        X_new: ndarray, shape (n_samples - q, n_components)
+            A (possibly multivariate) time series of temporal modes, for time 
+            points q, ..., n_samples - 1.
         """
 
         self.fit(X)

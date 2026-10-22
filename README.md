@@ -10,7 +10,7 @@
 
 _tsdr_ is a Python package of time-series dimension reduction (TSDR) methods: algorithms that reduce multivariate data to a few components by exploiting temporal structure.
 In contrast to general dimension reduction (GDR) methods, whose outputs are invariant to temporal permutation, TSDR methods are sensitive to temporal structure.
-The package implements 29 methods from the seven categories of TSDR methods defined in [Owens & Fulcher (2025)](https://doi.org/10.36227/techrxiv.176409662.29359239/v1), written in a simple, readable style to help time-series analysts understand the algorithms discussed in that review.
+The package implements 30 methods from the seven categories of TSDR methods defined in [Owens & Fulcher (2025)](https://doi.org/10.36227/techrxiv.176409662.29359239/v1), written in a simple, readable style to help time-series analysts understand the algorithms discussed in that review.
 
 ## Installation
 
@@ -75,7 +75,7 @@ Each is imported from the module named in the first column, e.g., `from tsdr.slo
 | <sub>(c) Predictability</sub> | <sub>`tsdr.predictability`</sub> | <sub>`TLPC` (temporally local predictive coding)</sub><br><sub>`PrCA` (predictable component analysis)</sub><br><sub>`DiCCA` (dynamic inner canonical correlation analysis)</sub><br><sub>`ForeCA` (forecastable component analysis)</sub><br><sub>`PFA` (predictable feature analysis)</sub><br><sub>`PTS` (principal time series)</sub><br><sub>`DCA` (dynamical components analysis)</sub> |
 | <sub>(d) Determinism</sub> | <sub>`tsdr.determinism`</sub> | <sub>`DyCA` (dynamical component analysis)</sub><br><sub>`DMD` (dynamic mode decomposition)</sub> |
 | <sub>(e) Non-stationarity</sub> | <sub>`tsdr.nonstationarity`</sub> | <sub>`ASSA` (analytic stationary subspace analysis)</sub><br><sub>`SSAsir` (stationary subspace analysis via sliced inverse regression)</sub><br><sub>`SSAsave` (stationary subspace analysis via sliced average variance estimation)</sub><br><sub>`SSAcor` (stationary subspace analysis via time-lagged autocorrelation)</sub><br><sub>`WaSSAf` (Wasserstein stationary subspace analysis using the Fréchet mean)</sub><br><sub>`WaSSAr` (Wasserstein stationary subspace analysis using the root-Fréchet mean)</sub><br><sub>`BSSnonstat` (blind source separation via non-stationarity of variances)</sub> |
-| <sub>(f) Diffusion</sub> | <sub>`tsdr.diffusion`</sub> | <sub>`DMcov` (diffusion maps using covariance distance)</sub><br><sub>`DIG` (dynamical information geometry)</sub> |
+| <sub>(f) Diffusion</sub> | <sub>`tsdr.diffusion`</sub> | <sub>`DMcov` (diffusion maps using covariance distance)</sub><br><sub>`DIG` (dynamical information geometry)</sub><br><sub>`NLSA` (nonlinear Laplacian spectral analysis)</sub> |
 | <sub>(g) Latent variable</sub> | <sub>`tsdr.latentvariable`</sub> | <sub>`LDS` (latent linear dynamical system)</sub><br><sub>`DFA` (dynamic factor analysis)</sub> |
 
 The figure at the top summarizes these categories.
@@ -83,7 +83,7 @@ The figure at the top summarizes these categories.
 A few methods differ from the common pattern:
 
 - Methods with a random initialization or random order of updates (`BioSFA`, `ISFA`, `SICA`, `ForeCA`, `DCA`, `BSSnonstat`, `LDS`, `DFA`) accept a `random_state` argument for reproducible results; `TCCA_Stiefel` uses a `seed` argument.
-- The diffusion methods (`DMcov`, `DIG`) embed sliding windows of the time series (of length `window`, every `step` samples) rather than individual time points, so `fit_transform` returns one row per window and there is no separate `transform`.
+- The diffusion methods are nonlinear, so they have `fit_transform` but no separate `transform`. `DMcov` and `DIG` embed sliding windows of the time series (of length `window`, every `step` samples), so they return one row per window; `NLSA` embeds the time series with `q` lags, so it returns `n_samples - q` rows (for time points `q` onwards).
 
 ## Citation
 

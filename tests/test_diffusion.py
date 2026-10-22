@@ -2,8 +2,9 @@
 
 import numpy as np
 import pytest
+import scipy.stats
 
-from tsdr.diffusion import DMcov, DIG
+from tsdr.diffusion import DMcov, DIG, NLSA
 
 from helpers import corr2, random_mix
 
@@ -59,3 +60,52 @@ def test_windows_include_last_window(method, T, window, step):
     G = method(window=window, step=step)._cov_distance_matrix(X)
     n = (T - window) // step + 1
     assert G.shape == (n, n)
+
+
+def sinusoid_benchmark(T=1000, D=10, noise_var=1.0, seed=0):
+    """The sinusoid-in-noise benchmark of Owens & Fulcher (2025): a sinusoid
+    and D - 1 white-noise channels, randomly rotated."""
+    rng = np.random.default_rng(seed)
+    z = np.sin(np.linspace(0, 4 * np.pi, T))
+    noise = rng.normal(scale=np.sqrt(noise_var), size=(T, D - 1))
+    A = scipy.stats.ortho_group.rvs(D, random_state=seed)
+    return z, np.column_stack([noise, z]) @ A
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_nlsa_recovers_sinusoid(seed):
+    """The leading NLSA temporal mode recovers the sinusoid; the modes are
+    given for time points q, ..., n_samples - 1."""
+    z, X = sinusoid_benchmark(seed=seed)
+    q = 10
+    Y = NLSA(n_components=1, q=q).fit_transform(X)
+    assert Y.shape == (len(z) - q, 1)
+    assert corr2(Y[:, 0], z[q:]) > 0.9
+
+
+def test_nlsa_temporal_modes_are_orthonormal():
+    """The temporal modes are orthonormal with respect to the invariant
+    measure of the diffusion map, which is a probability distribution."""
+    _, X = sinusoid_benchmark(T=500)
+    model = NLSA(n_components=5).fit(X)
+    V = model.components
+    np.testing.assert_allclose(model.measure_.sum(), 1)
+    assert np.all(model.measure_ > 0)
+    np.testing.assert_allclose(V.T @ (model.measure_[:, None] * V), np.eye(5),
+                               atol=1e-10)
+    assert np.all(np.diff(model.singular_values_) <= 0)
+
+
+def test_nlsa_with_complete_eigenfunction_basis():
+    """With all eigenfunctions (l = s), the eigenfunctions form a complete
+    basis, so A A^T = E^T diag(mu) E and the singular values are those of
+    the measure-weighted lagged embedding E (Giannakis & Majda, 2012)."""
+    _, X = sinusoid_benchmark(T=300)
+    q = 10
+    s = len(X) - q
+    model = NLSA(n_components=5, q=q, n_eigenfunctions=s).fit(X)
+    Xc = X - X.mean(0)
+    E = np.column_stack([Xc[q - 1 - i:len(X) - i] for i in range(q)])[1:]
+    eigvals = np.linalg.eigvalsh(E.T @ (model.measure_[:, None] * E))[::-1]
+    np.testing.assert_allclose(model.singular_values_, np.sqrt(eigvals[:5]),
+                               rtol=1e-8)
