@@ -172,3 +172,26 @@ def foreca_omega_ref(y, bandwidth=5, prior_weight=1e-3):
     f = np.mean([np.roll(I, l) for l in range(-bandwidth, bandwidth + 1)], axis=0)
     f = (1 - prior_weight) * f + prior_weight / T
     return 1 + np.sum(f * np.log(f)) / np.log(T)
+
+
+def pfa_ref(X, n_components, p=2, k=4):
+    """PFA (Richthofer & Wiskott, 2013, eqs. 7, 17, 22-25) on whitened data,
+    computed time step by time step: the history zeta(t) = [z(t-1), ...,
+    z(t-p)], the least squares predictions z(t) ~ W zeta(t) and zeta(t+1) ~
+    V zeta(t), and the eigenvectors with the least eigenvalues of the summed
+    error covariance of the iterated predictions z(t) ~ W V^i zeta(t-i)."""
+    Z, Wh, _ = whiten_ref(X)
+    T, D = Z.shape
+    hist = lambda t: np.concatenate([Z[t - j] for j in range(1, p + 1)])
+    mean_outer = lambda pairs: np.mean([np.outer(a, b) for a, b in pairs], axis=0)
+    W = (mean_outer((Z[t], hist(t)) for t in range(p, T))
+         @ np.linalg.pinv(mean_outer((hist(t), hist(t)) for t in range(p, T))))
+    V = (mean_outer((hist(t + 1), hist(t)) for t in range(p, T - 1))
+         @ np.linalg.pinv(mean_outer((hist(t), hist(t)) for t in range(p, T - 1))))
+    C = np.zeros((D, D))
+    for i in range(k + 1):
+        WVi = W @ np.linalg.matrix_power(V, i)
+        errors = [Z[t] - WVi @ hist(t - i) for t in range(p + i, T)]
+        C += mean_outer((e, e) for e in errors)
+    eigvals, U = np.linalg.eigh(C)
+    return Wh @ U[:, :n_components], eigvals

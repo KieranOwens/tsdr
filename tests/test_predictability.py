@@ -1,9 +1,11 @@
-"""Value tests for the predictability methods (TLPC, PrCA, DiCCA, ForeCA)."""
+"""Value tests for the predictability methods (TLPC, PrCA, DiCCA, ForeCA,
+PFA)."""
 
 import numpy as np
 import pytest
+import scipy.stats
 
-from tsdr.predictability import TLPC, PrCA, DiCCA, ForeCA
+from tsdr.predictability import TLPC, PrCA, DiCCA, ForeCA, PFA
 
 from tsdr._whitening import fit_whitening
 
@@ -193,3 +195,59 @@ def test_foreca_independent_of_random_starts(three_ar_sources):
     b = ForeCA(n_components=2, random_state=1).fit(X)
     np.testing.assert_allclose(a.omega_, b.omega_, rtol=1e-8)
     assert np.all(subspace_cos(a.linear_transform_, b.linear_transform_) > 0.9999)
+
+
+@pytest.mark.parametrize("p, k", [(1, 0), (2, 4), (3, 2)])
+def test_pfa_matches_reference(three_ar_sources, p, k):
+    _, X = three_ar_sources
+    X = X[:1000]
+    model = PFA(n_components=3, p=p, k=k).fit(X)
+    W, eigvals = ref.pfa_ref(X, 3, p, k)
+    assert np.all(subspace_cos(model.linear_transform_, W) > 1 - 1e-8)
+    np.testing.assert_allclose(model.eigvals_, eigvals, atol=1e-10)
+
+
+@pytest.mark.parametrize("p", [1, 2])
+def test_pfa_without_iterated_prediction_is_prca(three_ar_sources, p):
+    """For k = 0, PFA is PCA on the residuals of a least squares
+    autoregression (Richthofer & Wiskott, 2013, eq. 21), i.e., PrCA."""
+    _, X = three_ar_sources
+    W = PFA(n_components=3, p=p, k=0).fit(X).linear_transform_
+    W_prca = PrCA(n_components=3, model='linear_reg', p=p).fit(X).linear_transform_
+    assert np.all(subspace_cos(W, W_prca) > 1 - 1e-8)
+
+
+def test_pfa_recovers_predictable_sources(three_ar_sources):
+    S, X = three_ar_sources
+    model = PFA(n_components=3).fit(X)
+    Y = model.transform(X)
+    assert np.all(subspace_cos(model.linear_transform_,
+                               unmixing(X, S[:, :3])) > 0.99)
+    assert corr2(Y[:, 0], S[:, 0]) > 0.99
+    assert np.all(np.diff(model.eigvals_) >= 0)
+    np.testing.assert_allclose(np.cov(Y, rowvar=False), np.eye(3), atol=1e-8)
+
+
+def test_pfa_iterated_prediction_reduces_overfitting():
+    """The example of Richthofer & Wiskott (2013, Sec. 2.3): three noisy
+    sinusoids mixed with many white-noise dimensions. With k = 0 the
+    components overfit to the noise, so the autoregressive prediction error
+    of the extracted components (eq. 19) is higher than with k = 4."""
+    rng = np.random.default_rng(0)
+    T, n_noise = 1000, 200
+    t = np.arange(T)
+    eta = rng.normal(size=(T, 3))
+    S = np.column_stack([np.sin(0.1 * t) + 0.7 * eta[:, 0],
+                         np.sin(0.2 * t) + eta[:, 1],
+                         np.sin(0.4 * t) + 5.3 * eta[:, 2],
+                         rng.normal(size=(T, n_noise))])
+    X = S @ scipy.stats.ortho_group.rvs(3 + n_noise, random_state=0)
+
+    def ar_error(M, p=2):
+        Zeta = np.column_stack([M[p - j:len(M) - j] for j in range(1, p + 1)])
+        E = M[p:] - Zeta @ np.linalg.lstsq(Zeta, M[p:], rcond=None)[0]
+        return np.sum(np.mean(E ** 2, axis=0))
+
+    err_k0 = ar_error(PFA(n_components=2, p=2, k=0).fit_transform(X))
+    err_k4 = ar_error(PFA(n_components=2, p=2, k=4).fit_transform(X))
+    assert err_k4 < err_k0 - 0.2

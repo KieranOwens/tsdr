@@ -6,6 +6,7 @@
 # PrCA - Predictable Component Analysis
 # DiCCA - Dynamic inner Canonical Correlation Analysis
 # ForeCA - Forecastable Component Analysis
+# PFA - Predictable Feature Analysis
 
 import warnings
 
@@ -759,6 +760,164 @@ class ForeCA():
         X_new: ndarray, shape (n_samples, n_components)
             A (possibly multivariate) time series of components ordered by 
             forecastability.
+        """
+
+        self.fit(X)
+        
+        return self.transform(X)
+
+###############################################################################
+###############################################################################
+# PFA - Predictable Feature Analysis
+###############################################################################
+###############################################################################
+
+class PFA():
+    """
+    Predictable Feature Analysis (PFA).
+
+    PFA is a TSDR method for extracting the most predictable components from a 
+    multivariate time series (i.e., for which the error of a linear 
+    autoregressive prediction, iterated over several time steps, is 
+    minimised).
+
+    The steps involved in PFA are: (1) whiten the data, (2) fit a linear
+    autoregressive model by least squares that predicts x(t) from its history
+    zeta(t) = [x(t-1), ..., x(t-p)], x(t) ~ W zeta(t), and a model that 
+    predicts the history one time step ahead, zeta(t+1) ~ V zeta(t), (3) 
+    compute the covariance of the prediction errors of x(t) from the 
+    histories i = 0, ..., k time steps earlier, x(t) ~ W V^i zeta(t-i), summed 
+    over i, (4) apply eigendecomposition to this covariance and select the 
+    eigenvectors corresponding to the least eigenvalues, and (5) apply the 
+    eigenvector linear transformation to the whitened data.
+
+    Iterating the prediction over k time steps reduces overfitting of the 
+    components to noise (Richthofer & Wiskott, 2013, Sec. 2.3). For k = 0, 
+    PFA is equivalent to PrCA with model='linear_reg'.
+
+    Reference: Richthofer & Wiskott (2013) Predictable feature analysis, 
+    arXiv:1311.2503. A reference implementation by the authors is GNUPFA 
+    (https://github.com/Stewori/GNUPFA).
+
+    Parameters
+    ----------
+    n_components: int
+        The dimension (number of variables) of the time-series output.
+        Default: 1.
+
+    p: int
+        The order of the autoregressive model, i.e., the number of time steps 
+        (x(t-1), ..., x(t-p)) used to predict x(t).
+        Default: 2.
+
+    k: int
+        The number of iterated prediction steps used to reduce overfitting.
+        Default: 4.
+
+    Attributes
+    ----------
+    linear_transform_: ndarray, shape (n_features, n_components)
+        The linear transformation that yields the PFA components when applied 
+        to the input time series X.
+
+    eigvals_: ndarray, shape (n_features,)
+        The summed prediction error variance of each (unit-variance) 
+        component, in ascending order (most predictable first).
+    """
+
+    def __init__(self, n_components=1, p=2, k=4):
+
+        self.n_components = n_components
+        self.p = p
+        self.k = k
+
+    def fit(self, X, y=None):
+        """Fit the model to X
+
+        Parameters
+        ----------
+        X : ndarray, shape (n_samples, n_features)
+            A multivariate time series of shape (n_samples, n_features).
+
+        y : None
+            Ignored. Used to comply with the scikit-learn API.
+
+        Returns
+        -------
+        self : object
+            Returns self.
+        """
+
+        # fit a PCA whitening model
+        pca_white = fit_whitening(X)
+
+        # whiten the data
+        Xw = pca_white.transform(X)
+
+        # data dimensions
+        T, D = Xw.shape
+
+        # histories zeta(t) = [x(t-1), ..., x(t-p)] and x(t), for t = p, ..., T-1
+        Zeta = np.column_stack([Xw[self.p - j:T - j,:] for j in range(1, self.p + 1)])
+        Xt = Xw[self.p:,:]
+
+        # least squares predictions x(t) ~ W zeta(t) and zeta(t+1) ~ V zeta(t),
+        # Richthofer & Wiskott (2013) eqs. (17) and (22)
+        W = np.linalg.lstsq(Zeta, Xt, rcond=None)[0].T
+        V = np.linalg.lstsq(Zeta[:-1,:], Zeta[1:,:], rcond=None)[0].T
+
+        # summed covariance of the errors of the iterated predictions 
+        # x(t) ~ W V^i zeta(t-i), i = 0, ..., k, Richthofer & Wiskott (2013)
+        # eq. (25)
+        C = np.zeros((D, D))
+        for i in range(self.k + 1):
+            E = Xt[i:,:] - Zeta[:len(Zeta) - i,:] @ (W @ np.linalg.matrix_power(V, i)).T
+            C += E.T @ E / E.shape[0]
+
+        # eigendecomposition (eigenvalues in ascending order)
+        eigvals, eigvecs = np.linalg.eigh(C)
+        self.eigvals_ = eigvals
+
+        # get linear transformation
+        transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
+        transform2 = eigvecs[:,:self.n_components]
+        self.linear_transform_ = transform1 @ transform2
+
+        return self
+
+    def transform(self, X):
+        """Apply dimension reduction to X.
+
+        Parameters
+        ----------
+        X : ndarray, shape (n_samples, n_features)
+            A multivariate time series of shape (n_samples, n_features).
+
+        Returns
+        -------
+        X_new: ndarray, shape (n_samples, n_components)
+            A (possibly multivariate) time series of components ordered by 
+            predictability.
+        """
+
+        return X @ self.linear_transform_
+
+    def fit_transform(self, X, y=None):
+        """Fit the model to X and apply dimension reduction to X.
+
+        Parameters
+        ----------
+        X : ndarray, shape (n_samples, n_features)
+            A multivariate time series of shape (n_samples, n_features).
+
+        y : None
+            Ignored. Used to comply with the scikit-learn API.
+
+        Returns
+        -------
+        X_new: ndarray, shape (n_samples, n_components)
+            A (possibly multivariate) time series of components ordered by 
+            predictability.
         """
 
         self.fit(X)
