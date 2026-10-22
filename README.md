@@ -70,13 +70,13 @@ Each is imported from the module named in the first column, e.g., `from tsdr.slo
 
 | Category | Module | Methods |
 |---|---|---|
-| (a) Slowness | `tsdr.slowness` | `SFA` (slow feature analysis), `BioSFA` (biologically plausible SFA), `ISFA` (independent slow feature analysis), `SICA` (slow independent component analysis) |
-| (b) Autocorrelation | `tsdr.autocorrelation` | `TICA` (time-lagged independent component analysis), `TMCA` (time-lagged maximum covariance analysis), `CSA` (colored subspace analysis), `TCCA_Stiefel` (time-lagged canonical component analysis by trace optimization on the Stiefel manifold), `sPCA_dwt` (spectral PCA using the discrete wavelet transform) |
-| (c) Predictability | `tsdr.predictability` | `TLPC` (temporally local predictive coding), `PrCA` (predictable component analysis), `DiCCA` (dynamic inner canonical correlation analysis), `ForeCA` (forecastable component analysis), `PFA` (predictable feature analysis), `PTS` (principal time series), `DCA` (dynamical components analysis) |
-| (d) Determinism | `tsdr.determinism` | `DyCA` (dynamical component analysis), `DMD` (dynamic mode decomposition) |
-| (e) Non-stationarity | `tsdr.nonstationarity` | `ASSA` (analytic stationary subspace analysis), `SSAsir`, `SSAsave`, `SSAcor` (stationary subspace analysis via sliced inverse regression, sliced average variance estimation, and time-lagged autocorrelation), `WaSSAf`, `WaSSAr` (Wasserstein stationary subspace analysis using the Fréchet and root-Fréchet means), `BSSnonstat` (blind source separation via non-stationarity of variances) |
-| (f) Diffusion | `tsdr.diffusion` | `DMcov` (diffusion maps using covariance distance), `DIG` (dynamical information geometry) |
-| (g) Latent variable | `tsdr.latentvariable` | `LDS` (latent linear dynamical system), `DFA` (dynamic factor analysis) |
+| (a) Slowness | `tsdr.slowness` | `SFA` (slow feature analysis)<br>`BioSFA` (biologically plausible SFA)<br>`ISFA` (independent slow feature analysis)<br>`SICA` (slow independent component analysis) |
+| (b) Autocorrelation | `tsdr.autocorrelation` | `TICA` (time-lagged independent component analysis)<br>`TMCA` (time-lagged maximum covariance analysis)<br>`CSA` (colored subspace analysis)<br>`TCCA_Stiefel` (time-lagged canonical component analysis by trace optimization on the Stiefel manifold)<br>`sPCA_dwt` (spectral PCA using the discrete wavelet transform) |
+| (c) Predictability | `tsdr.predictability` | `TLPC` (temporally local predictive coding)<br>`PrCA` (predictable component analysis)<br>`DiCCA` (dynamic inner canonical correlation analysis)<br>`ForeCA` (forecastable component analysis)<br>`PFA` (predictable feature analysis)<br>`PTS` (principal time series)<br>`DCA` (dynamical components analysis) |
+| (d) Determinism | `tsdr.determinism` | `DyCA` (dynamical component analysis)<br>`DMD` (dynamic mode decomposition) |
+| (e) Non-stationarity | `tsdr.nonstationarity` | `ASSA` (analytic stationary subspace analysis)<br>`SSAsir` (stationary subspace analysis via sliced inverse regression)<br>`SSAsave` (stationary subspace analysis via sliced average variance estimation)<br>`SSAcor` (stationary subspace analysis via time-lagged autocorrelation)<br>`WaSSAf` (Wasserstein stationary subspace analysis using the Fréchet mean)<br>`WaSSAr` (Wasserstein stationary subspace analysis using the root-Fréchet mean)<br>`BSSnonstat` (blind source separation via non-stationarity of variances) |
+| (f) Diffusion | `tsdr.diffusion` | `DMcov` (diffusion maps using covariance distance)<br>`DIG` (dynamical information geometry) |
+| (g) Latent variable | `tsdr.latentvariable` | `LDS` (latent linear dynamical system)<br>`DFA` (dynamic factor analysis) |
 
 The figure at the top summarizes these categories.
 
