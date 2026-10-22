@@ -1,9 +1,11 @@
-"""Value tests for the predictability methods (TLPC, PrCA, DiCCA)."""
+"""Value tests for the predictability methods (TLPC, PrCA, DiCCA, ForeCA)."""
 
 import numpy as np
 import pytest
 
-from tsdr.predictability import TLPC, PrCA, DiCCA
+from tsdr.predictability import TLPC, PrCA, DiCCA, ForeCA
+
+from tsdr._whitening import fit_whitening
 
 from helpers import corr2, subspace_cos, random_mix, ar1, unmixing
 import reference as ref
@@ -134,3 +136,60 @@ def test_prca_kernel_ridge_linear_kernel(opposite_ar_sources):
 def test_prca_unknown_model_raises(opposite_ar_sources):
     with pytest.raises(ValueError, match="Unknown model"):
         PrCA(model='ridge').fit(opposite_ar_sources[:500])
+
+
+def test_foreca_maximises_forecastability_2d():
+    """In two dimensions the most forecastable direction can be found by
+    brute force over the angle of a unit vector in whitened coordinates."""
+    rng = np.random.default_rng(0)
+    T = 600
+    S = np.column_stack([ar2(T, 1.6, -0.9, rng), rng.normal(size=T)])
+    X, _ = random_mix(S, seed=1)
+    model = ForeCA(n_components=1, random_state=0).fit(X)
+    Xw = fit_whitening(X).transform(X)
+    angles = np.linspace(0, np.pi, 181)
+    best = max(ref.foreca_omega_ref(Xw @ np.array([np.cos(a), np.sin(a)]))
+               for a in angles)
+    assert model.omega_[0] >= best - 1e-6
+
+
+def test_foreca_recovers_most_forecastable_sources(three_ar_sources):
+    """The components are ordered by forecastability, omega_ is the
+    forecastability of each component (Goerg, 2013, eq. 15), and the
+    components are uncorrelated with unit variance."""
+    S, X = three_ar_sources
+    model = ForeCA(n_components=3, random_state=0).fit(X)
+    Y = model.transform(X)
+    assert corr2(Y[:, 0], S[:, 0]) > 0.999
+    assert np.all(subspace_cos(model.linear_transform_,
+                               unmixing(X, S[:, :3])) > 0.999)
+    assert np.all(np.diff(model.omega_) < 0)
+    np.testing.assert_allclose(model.omega_,
+                               [ref.foreca_omega_ref(Y[:, i]) for i in range(3)],
+                               rtol=1e-8)
+    np.testing.assert_allclose(np.cov(Y, rowvar=False), np.eye(3), atol=1e-8)
+
+
+def test_foreca_em_decreases_spectral_entropy(three_ar_sources):
+    """Each iteration of the EM-like algorithm does not increase the
+    spectral entropy (Goerg, 2013, Theorem 4.2)."""
+    _, X = three_ar_sources
+    Xw = fit_whitening(X).transform(X)
+    T, D = Xw.shape
+    F = np.fft.fft(Xw, axis=0) / np.sqrt(T * (T - 1))
+    model = ForeCA(max_iters=1)
+    w = np.random.default_rng(0).normal(size=D)
+    w = w / np.linalg.norm(w)
+    entropies = []
+    for _ in range(20):
+        w, H, _ = model._em(F, w)
+        entropies.append(H)
+    assert np.all(np.diff(entropies) <= 1e-12)
+
+
+def test_foreca_independent_of_random_starts(three_ar_sources):
+    _, X = three_ar_sources
+    a = ForeCA(n_components=2, random_state=0).fit(X)
+    b = ForeCA(n_components=2, random_state=1).fit(X)
+    np.testing.assert_allclose(a.omega_, b.omega_, rtol=1e-8)
+    assert np.all(subspace_cos(a.linear_transform_, b.linear_transform_) > 0.9999)

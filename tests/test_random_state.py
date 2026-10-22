@@ -8,6 +8,7 @@ import pytest
 from tsdr.slowness import BioSFA
 from tsdr.nonstationarity import BSSnonstat
 from tsdr.latentvariable import LDS
+from tsdr.predictability import ForeCA
 
 from helpers import random_mix, ar1
 
@@ -16,6 +17,7 @@ METHODS = {
     "BSSnonstat": lambda rs: BSSnonstat(n_components=2, max_iters=5,
                                         random_state=rs),
     "LDS": lambda rs: LDS(n_components=2, max_iter=2, random_state=rs),
+    "ForeCA": lambda rs: ForeCA(n_components=2, n_starts=2, random_state=rs),
 }
 
 

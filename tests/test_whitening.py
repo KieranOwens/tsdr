@@ -6,7 +6,7 @@ import pytest
 
 from tsdr.slowness import SFA, BioSFA
 from tsdr.autocorrelation import TICA, TMCA, CSA, TCCA_Stiefel, sPCA_dwt
-from tsdr.predictability import TLPC, PrCA, DiCCA
+from tsdr.predictability import TLPC, PrCA, DiCCA, ForeCA
 from tsdr.determinism import DyCA, DMD
 from tsdr.nonstationarity import (ASSA, SSAsir, SSAsave, SSAcor, WaSSAf,
                                   WaSSAr, BSSnonstat)
@@ -17,7 +17,7 @@ from helpers import corr2, random_mix, ar1
 METHODS = {
     "SFA": SFA, "BioSFA": BioSFA, "TICA": TICA, "TMCA": TMCA, "CSA": CSA,
     "TCCA_Stiefel": TCCA_Stiefel, "sPCA_dwt": sPCA_dwt, "TLPC": TLPC,
-    "PrCA": PrCA, "DiCCA": DiCCA, "DyCA": DyCA, "DMD": DMD, "ASSA": ASSA,
+    "PrCA": PrCA, "DiCCA": DiCCA, "ForeCA": ForeCA, "DyCA": DyCA, "DMD": DMD, "ASSA": ASSA,
     "SSAsir": SSAsir, "SSAsave": SSAsave, "SSAcor": SSAcor,
     "WaSSAf": WaSSAf, "WaSSAr": WaSSAr,
     "BSSnonstat": lambda: BSSnonstat(max_iters=2),

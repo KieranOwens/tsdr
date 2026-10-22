@@ -155,3 +155,20 @@ def wassar_S_ref(X, n_windows):
     R = np.mean(roots, axis=0)
     return sum(np.outer(Xi.mean(0), Xi.mean(0)) + (Cr - R) @ (Cr - R).T
                for Xi, Cr in zip(wins, roots))
+
+
+def foreca_omega_ref(y, bandwidth=5, prior_weight=1e-3):
+    """Forecastability Omega = 1 - H of Goerg (2013), eqs. (12) and (15):
+    the discrete spectral entropy (base T) of the periodogram of y at the
+    T Fourier frequencies, computed by an explicit DFT sum, smoothed by a
+    circular Daniell kernel of width 2 * bandwidth + 1, normalised to sum to
+    one, and mixed with a uniform prior of weight prior_weight."""
+    y = np.asarray(y, dtype=float)
+    T = len(y)
+    t = np.arange(T)
+    dft = np.exp(-2j * np.pi * np.outer(t, t) / T) @ (y - y.mean())
+    I = np.abs(dft) ** 2
+    I = I / I.sum()
+    f = np.mean([np.roll(I, l) for l in range(-bandwidth, bandwidth + 1)], axis=0)
+    f = (1 - prior_weight) * f + prior_weight / T
+    return 1 + np.sum(f * np.log(f)) / np.log(T)

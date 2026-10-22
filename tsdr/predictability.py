@@ -5,10 +5,17 @@
 # TLPC - Temporally Local Predictive Coding
 # PrCA - Predictable Component Analysis
 # DiCCA - Dynamic inner Canonical Correlation Analysis
+# ForeCA - Forecastable Component Analysis
+
+import warnings
 
 import numpy as np
 import scipy
+import scipy.linalg
+import scipy.ndimage
 from sklearn.decomposition import PCA
+from sklearn.exceptions import ConvergenceWarning
+from sklearn.utils import check_random_state
 
 from ._whitening import fit_whitening
 
@@ -503,6 +510,255 @@ class DiCCA():
         X_new: ndarray, shape (n_samples, n_components)
             A (possibly multivariate) time series of components ordered by 
             predictability.
+        """
+
+        self.fit(X)
+        
+        return self.transform(X)
+
+###############################################################################
+###############################################################################
+# ForeCA - Forecastable Component Analysis
+###############################################################################
+###############################################################################
+
+class ForeCA():
+    """
+    Forecastable Component Analysis (ForeCA).
+
+    ForeCA is a TSDR method for extracting the most forecastable components 
+    from a multivariate time series (i.e., for which the spectral entropy is 
+    minimised, so that the spectral density is concentrated on few 
+    frequencies).
+
+    The steps involved in ForeCA are: (1) whiten the data, (2) estimate the 
+    multivariate spectral density of the whitened data by a smoothed 
+    periodogram, (3) from a random unit vector w, iterate until convergence:
+    (a) compute the spectral density f_y of y = w^T x and (b) update w to the 
+    eigenvector corresponding to the least eigenvalue of the spectral density 
+    matrix weighted by -log f_y (an EM-like algorithm that decreases the 
+    spectral entropy of y at each iteration), keeping the best of several 
+    random starts, (4) obtain further components by repeating (3) in the 
+    orthogonal complement of the previous components, and (5) apply the 
+    linear transformation to the whitened data.
+
+    The forecastability of a component is Omega = 1 - H, where H is the 
+    spectral entropy of its (discrete) spectral density with logarithm base 
+    n_samples, so that Omega is 0 for white noise and 1 for a sinusoid.
+
+    Reference: Goerg (2013) Forecastable component analysis, ICML. The 
+    defaults (smoothed periodogram, prior weight, number of random starts, 
+    and ordering by Omega) follow the R package ForeCA by G. M. Goerg 
+    (https://github.com/gmgeorg/ForeCA).
+
+    Parameters
+    ----------
+    n_components: int
+        The dimension (number of variables) of the time-series output.
+        Default: 1.
+
+    bandwidth: int
+        The number of neighbouring Fourier frequencies on each side used to 
+        smooth the periodogram (Daniell kernel of width 2 * bandwidth + 1).
+        Default: 5.
+
+    prior_weight: float
+        The weight of a uniform (white noise) prior mixed into each spectral 
+        density, which avoids log(0) in the spectral entropy.
+        Default: 1e-3.
+
+    n_starts: int
+        The number of random starts of the EM-like algorithm for each 
+        component, of which the one with the least spectral entropy is kept.
+        Default: 10.
+
+    max_iters: int
+        The maximum number of iterations of the EM-like algorithm. A 
+        ConvergenceWarning is raised if the best start has not converged 
+        (see tol) after max_iters iterations.
+        Default: 100.
+
+    tol: float
+        The algorithm stops when the norm of the change in w falls below tol.
+        Default: 1e-6.
+
+    random_state: int, RandomState instance or None
+        Controls the random starts. Pass an int for reproducible results 
+        across calls (the global NumPy random state is then left unchanged). 
+        If None, the global NumPy random state is used.
+        Default: None.
+
+    Attributes
+    ----------
+    linear_transform_: ndarray, shape (n_features, n_components)
+        The linear transformation that yields the ForeCA components when 
+        applied to the input time series X.
+
+    omega_: ndarray, shape (n_components,)
+        The forecastability Omega of each component, in descending order.
+    """
+
+    def __init__(self, n_components=1, bandwidth=5, prior_weight=1e-3, 
+                 n_starts=10, max_iters=100, tol=1e-6, random_state=None):
+
+        self.n_components = n_components
+        self.bandwidth = bandwidth
+        self.prior_weight = prior_weight
+        self.n_starts = n_starts
+        self.max_iters = max_iters
+        self.tol = tol
+        self.random_state = random_state
+
+    def _smooth(self, a):
+        """Circular moving average (Daniell kernel) over the frequencies."""
+
+        return scipy.ndimage.uniform_filter1d(a, 2 * self.bandwidth + 1, 
+                                              axis=0, mode='wrap')
+
+    def _density(self, F, w):
+        """Spectral density of y = w^T x at the Fourier frequencies, which
+        sums to one for unit w, mixed with a uniform prior."""
+
+        T = F.shape[0]
+        f = self._smooth(np.abs(F @ w)**2)
+
+        return (1 - self.prior_weight) * f + self.prior_weight / T
+
+    def _em(self, F, w):
+        """The EM-like algorithm of Goerg (2013, Sec. 4.2.1) from w."""
+
+        T, D = F.shape
+        delta = np.inf
+        for _ in range(self.max_iters):
+
+            # E-step: spectral density of y = w^T x and its -log (base T)
+            c = -np.log(self._density(F, w)) / np.log(T)
+
+            # M-step: w is the eigenvector of the least eigenvalue of the 
+            # -log f_y weighted spectral density matrix, Goerg (2013) eq. (24)
+            # (sum_j c_j f_j = F^H diag(smooth(c)) F for the smoothed 
+            # periodogram f_j, plus the uniform prior)
+            S = np.real(F.conj().T @ (self._smooth(c)[:,None] * F))
+            S = (1 - self.prior_weight) * S + self.prior_weight / T * np.sum(c) * np.eye(D)
+            _, eigvecs = np.linalg.eigh(S)
+            w_new = eigvecs[:,0] * np.sign(eigvecs[:,0] @ w)
+
+            delta = np.linalg.norm(w_new - w)
+            w = w_new
+            if delta < self.tol:
+                break
+
+        # spectral entropy of y = w^T x (base T)
+        f = self._density(F, w)
+        H = -np.sum(f * np.log(f)) / np.log(T)
+
+        return w, H, delta
+
+    def fit(self, X, y=None):
+        """Fit the model to X
+
+        Parameters
+        ----------
+        X : ndarray, shape (n_samples, n_features)
+            A multivariate time series of shape (n_samples, n_features).
+
+        y : None
+            Ignored. Used to comply with the scikit-learn API.
+
+        Returns
+        -------
+        self : object
+            Returns self.
+        """
+
+        # fit a PCA whitening model
+        pca_white = fit_whitening(X)
+
+        # whiten the data
+        Xw = pca_white.transform(X)
+
+        # data dimensions
+        T, D = Xw.shape
+
+        # discrete Fourier transform, scaled so that the periodogram of 
+        # y = w^T x, |F w|^2, sums over the T Fourier frequencies to the 
+        # variance of y (Parseval), i.e., to one for unit w
+        F = np.fft.fft(Xw, axis=0) / np.sqrt(T * (T - 1))
+
+        rng = check_random_state(self.random_state)
+
+        # compute each projection vector in the orthogonal complement of the
+        # previous ones, Goerg (2013) Sec. 4.3
+        W = np.zeros((D, 0))
+        H = []
+        for _ in range(self.n_components):
+
+            # orthonormal basis of the orthogonal complement of W
+            N = scipy.linalg.null_space(W.T) if W.shape[1] > 0 else np.eye(D)
+            FN = F @ N
+
+            # keep the best of several random starts
+            best = None
+            for _ in range(self.n_starts):
+                w0 = rng.normal(size=N.shape[1])
+                w, H_w, delta = self._em(FN, w0 / np.linalg.norm(w0))
+                if best is None or H_w < best[1]:
+                    best = (w, H_w, delta)
+
+            if best[2] >= self.tol:
+                warnings.warn(f"ForeCA did not converge in max_iters="
+                              f"{self.max_iters} iterations (change in w "
+                              f"{best[2]:.2e} >= tol={self.tol}); consider "
+                              "increasing max_iters.", ConvergenceWarning)
+
+            W = np.column_stack([W, N @ best[0]])
+            H.append(best[1])
+
+        # order the components by forecastability
+        omega = 1 - np.array(H)
+        order = np.argsort(-omega)
+        self.omega_ = omega[order]
+
+        # get linear transformation
+        transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
+        transform2 = W[:,order]
+        self.linear_transform_ = transform1 @ transform2
+
+        return self
+
+    def transform(self, X):
+        """Apply dimension reduction to X.
+
+        Parameters
+        ----------
+        X : ndarray, shape (n_samples, n_features)
+            A multivariate time series of shape (n_samples, n_features).
+
+        Returns
+        -------
+        X_new: ndarray, shape (n_samples, n_components)
+            A (possibly multivariate) time series of components ordered by 
+            forecastability.
+        """
+
+        return X @ self.linear_transform_
+
+    def fit_transform(self, X, y=None):
+        """Fit the model to X and apply dimension reduction to X.
+
+        Parameters
+        ----------
+        X : ndarray, shape (n_samples, n_features)
+            A multivariate time series of shape (n_samples, n_features).
+
+        y : None
+            Ignored. Used to comply with the scikit-learn API.
+
+        Returns
+        -------
+        X_new: ndarray, shape (n_samples, n_components)
+            A (possibly multivariate) time series of components ordered by 
+            forecastability.
         """
 
         self.fit(X)
