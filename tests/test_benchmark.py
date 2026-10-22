@@ -7,7 +7,7 @@ import scipy
 
 from tsdr.slowness import SFA, BioSFA, ISFA, SICA
 from tsdr.autocorrelation import TICA, TMCA, CSA, TCCA_Stiefel, sPCA_dwt
-from tsdr.predictability import TLPC, PrCA, DiCCA, ForeCA, PFA, PTS
+from tsdr.predictability import TLPC, PrCA, DiCCA, ForeCA, PFA, PTS, DCA
 from tsdr.determinism import DyCA, DMD
 from tsdr.nonstationarity import (ASSA, SSAsir, SSAsave, SSAcor, WaSSAf,
                                   WaSSAr, BSSnonstat)
@@ -40,6 +40,7 @@ METHODS = {
     "ForeCA": lambda: ForeCA(random_state=0),
     "PFA": lambda: PFA(),
     "PTS": lambda: PTS(M=2),
+    "DCA": lambda: DCA(random_state=0),
     "DyCA": lambda: DyCA(),
     "DMD": lambda: DMD(),
     "ASSA": lambda: ASSA(),

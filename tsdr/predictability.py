@@ -8,6 +8,7 @@
 # ForeCA - Forecastable Component Analysis
 # PFA - Predictable Feature Analysis
 # PTS - Principal Time Series
+# DCA - Dynamical Components Analysis
 
 import warnings
 
@@ -1179,6 +1180,211 @@ class PTS():
         X_new: ndarray, shape (n_samples, n_components)
             A (possibly multivariate) time series of components ordered by 
             predictability.
+        """
+
+        self.fit(X)
+        
+        return self.transform(X)
+
+###############################################################################
+###############################################################################
+# DCA - Dynamical Components Analysis
+###############################################################################
+###############################################################################
+
+class DCA():
+    """
+    Dynamical Components Analysis (DCA).
+
+    DCA is a TSDR method for extracting the subspace of a multivariate time 
+    series with the most predictive information, i.e., the mutual 
+    information between past and future windows of length T of the projected
+    time series, estimated under a Gaussian assumption.
+
+    The steps involved in DCA are: (1) whiten the data, (2) compute the 
+    spatiotemporal covariance matrix Sigma_2T of windows of 2T consecutive 
+    time points, whose top-left block is Sigma_T, (3) maximise the Gaussian 
+    predictive information of the projection y_t = V^T x_t, 
+    log|Sigma_T(Y)| - 1/2 log|Sigma_2T(Y)|, over V by L-BFGS from several
+    random initialisations, with a penalty that keeps the columns of V 
+    orthonormal, and (4) apply the linear transformation to the whitened 
+    data.
+
+    The predictive information is invariant to invertible transformations of
+    V, so DCA finds a subspace rather than an ordered set of components; the 
+    components are returned as an orthonormal (uncorrelated, unit-variance) 
+    basis of this subspace. Not to be confused with DyCA (dynamical 
+    component analysis).
+
+    Reference: Clark, Livezey & Bouchard (2019) Unsupervised discovery of 
+    temporal structure in noisy data with dynamical components analysis, 
+    NeurIPS. A PyTorch implementation by the authors is available at 
+    https://github.com/BouchardLab/DynamicalComponentsAnalysis.
+
+    Parameters
+    ----------
+    n_components: int
+        The dimension (number of variables) of the time-series output.
+        Default: 1.
+
+    T: int
+        The length of the past and future windows.
+        Default: 5.
+
+    n_init: int
+        The number of random initialisations, of which the solution with the 
+        most predictive information is kept.
+        Default: 5.
+
+    ortho_penalty: float
+        The weight of the penalty ||V^T V - I||^2 that keeps the columns of V 
+        orthonormal during optimisation (it does not change the solution).
+        Default: 1.0.
+
+    random_state: int, RandomState instance or None
+        Controls the random initialisations. Pass an int for reproducible 
+        results across calls (the global NumPy random state is then left 
+        unchanged). If None, the global NumPy random state is used.
+        Default: None.
+
+    Attributes
+    ----------
+    linear_transform_: ndarray, shape (n_features, n_components)
+        The linear transformation that yields the DCA components when applied 
+        to the input time series X.
+
+    predictive_information_: float
+        The Gaussian predictive information (in nats) of the components.
+    """
+
+    def __init__(self, n_components=1, T=5, n_init=5, ortho_penalty=1.0, 
+                 random_state=None):
+
+        self.n_components = n_components
+        self.T = T
+        self.n_init = n_init
+        self.ortho_penalty = ortho_penalty
+        self.random_state = random_state
+
+    def _predictive_information(self, V, Sigma):
+        """The Gaussian predictive information of y_t = V^T x_t and its 
+        gradient with respect to V, Clark et al. (2019) eq. (3)."""
+
+        D, d = V.shape
+        pi, grad = 0, np.zeros_like(V)
+        for k, weight in [(self.T, 1), (2 * self.T, -0.5)]:
+
+            # covariance of k consecutive projected time points, 
+            # Sigma_k(Y) = (I_k kron V)^T Sigma_k(X) (I_k kron V)
+            Vk = np.kron(np.eye(k), V)
+            Sk = Sigma[:k * D,:k * D]
+            M = Vk.T @ Sk @ Vk
+            pi += weight * np.linalg.slogdet(M)[1]
+
+            # gradient of log|M| with respect to Vk is 2 Sk Vk M^-1, summed 
+            # over the k diagonal blocks of Vk
+            G = 2 * Sk @ Vk @ np.linalg.inv(M)
+            grad += weight * sum(G[i * D:(i + 1) * D, i * d:(i + 1) * d] for i in range(k))
+
+        return pi, grad
+
+    def fit(self, X, y=None):
+        """Fit the model to X
+
+        Parameters
+        ----------
+        X : ndarray, shape (n_samples, n_features)
+            A multivariate time series of shape (n_samples, n_features).
+
+        y : None
+            Ignored. Used to comply with the scikit-learn API.
+
+        Returns
+        -------
+        self : object
+            Returns self.
+        """
+
+        # fit a PCA whitening model
+        pca_white = fit_whitening(X)
+
+        # whiten the data
+        Xw = pca_white.transform(X)
+
+        # data dimensions
+        N, D = Xw.shape
+        d = self.n_components
+
+        # spatiotemporal covariance of windows of 2T consecutive time points,
+        # Clark et al. (2019) eq. (2)
+        windows = np.column_stack([Xw[i:N - 2 * self.T + 1 + i,:] for i in range(2 * self.T)])
+        Sigma = np.cov(windows, rowvar=False)
+
+        # loss: minus the predictive information plus the orthonormality 
+        # penalty, Clark et al. (2019) Appendix eq. (1)
+        def loss(v):
+            V = v.reshape(D, d)
+            pi, grad = self._predictive_information(V, Sigma)
+            E = V.T @ V - np.eye(d)
+            value = -pi + self.ortho_penalty * np.sum(E**2)
+            grad = -grad + self.ortho_penalty * 4 * V @ E
+            return value, grad.ravel()
+
+        # maximise the predictive information by L-BFGS from several random 
+        # initialisations
+        rng = check_random_state(self.random_state)
+        best = None
+        for _ in range(self.n_init):
+            V0 = np.linalg.qr(rng.normal(size=(D, d)))[0]
+            result = scipy.optimize.minimize(loss, V0.ravel(), jac=True, 
+                                             method='L-BFGS-B')
+            V = np.linalg.qr(result.x.reshape(D, d))[0]
+            pi = self._predictive_information(V, Sigma)[0]
+            if best is None or pi > best[1]:
+                best = (V, pi)
+
+        self.predictive_information_ = best[1]
+
+        # get linear transformation
+        transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
+        transform2 = best[0]
+        self.linear_transform_ = transform1 @ transform2
+
+        return self
+
+    def transform(self, X):
+        """Apply dimension reduction to X.
+
+        Parameters
+        ----------
+        X : ndarray, shape (n_samples, n_features)
+            A multivariate time series of shape (n_samples, n_features).
+
+        Returns
+        -------
+        X_new: ndarray, shape (n_samples, n_components)
+            A (possibly multivariate) time series of components spanning the
+            most predictive subspace.
+        """
+
+        return X @ self.linear_transform_
+
+    def fit_transform(self, X, y=None):
+        """Fit the model to X and apply dimension reduction to X.
+
+        Parameters
+        ----------
+        X : ndarray, shape (n_samples, n_features)
+            A multivariate time series of shape (n_samples, n_features).
+
+        y : None
+            Ignored. Used to comply with the scikit-learn API.
+
+        Returns
+        -------
+        X_new: ndarray, shape (n_samples, n_components)
+            A (possibly multivariate) time series of components spanning the
+            most predictive subspace.
         """
 
         self.fit(X)

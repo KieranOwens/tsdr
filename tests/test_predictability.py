@@ -1,13 +1,15 @@
 """Value tests for the predictability methods (TLPC, PrCA, DiCCA, ForeCA,
-PFA, PTS)."""
+PFA, PTS, DCA)."""
 
 import numpy as np
 import pytest
 import scipy.stats
+from sklearn.decomposition import PCA
 
-from tsdr.predictability import TLPC, PrCA, DiCCA, ForeCA, PFA, PTS
+from tsdr.predictability import TLPC, PrCA, DiCCA, ForeCA, PFA, PTS, DCA
 
 from tsdr._whitening import fit_whitening
+from tsdr.slowness import SFA
 
 from helpers import corr2, subspace_cos, random_mix, ar1, unmixing, whiten_ref
 import reference as ref
@@ -338,3 +340,83 @@ def test_pts_alternating_steps_decrease_prediction_error(three_ar_sources):
         w = model._update_w(Xw, Wk, A)
         errors.append(model._fit_var(Xw, np.column_stack([Wk, w]))[1])
     assert np.all(np.diff(errors) <= 1e-12)
+
+
+def test_dca_gradient(three_ar_sources):
+    """The analytic gradient of the predictive information agrees with
+    finite differences."""
+    _, X = three_ar_sources
+    Xw = fit_whitening(X).transform(X)
+    N, D = Xw.shape
+    model = DCA(n_components=2, T=3)
+    windows = np.column_stack([Xw[i:N - 5 + i] for i in range(6)])
+    Sigma = np.cov(windows, rowvar=False)
+    V = np.random.default_rng(0).normal(size=(D, 2))
+    _, grad = model._predictive_information(V, Sigma)
+    eps = 1e-6
+    for i, j in [(0, 0), (2, 1), (5, 0)]:
+        E = np.zeros_like(V)
+        E[i, j] = eps
+        numerical = (model._predictive_information(V + E, Sigma)[0]
+                     - model._predictive_information(V - E, Sigma)[0]) / (2 * eps)
+        np.testing.assert_allclose(grad[i, j], numerical, rtol=1e-5, atol=1e-8)
+
+
+@pytest.mark.parametrize("n_components", [1, 2])
+def test_dca_with_one_time_step_is_sfa(n_components):
+    """For T = 1 and time-reversible data (AR(1) sources with positive
+    autocorrelation), DCA and SFA find the same subspace (Clark et al., 2019,
+    Sec. 3)."""
+    rng = np.random.default_rng(1)
+    T = 5000
+    S = np.column_stack([ar1(T, .95, rng), ar1(T, .8, rng), ar1(T, .5, rng),
+                         rng.normal(size=(T, 3))])
+    X, _ = random_mix(S, seed=2)
+    W = DCA(n_components=n_components, T=1, random_state=0).fit(X).linear_transform_
+    W_sfa = SFA(n_components=n_components).fit(X).linear_transform_
+    assert np.all(subspace_cos(W, W_sfa) > 1 - 1e-6)
+
+
+def test_dca_finds_dynamics_rather_than_variance():
+    """As in Clark et al. (2019, Fig. 1), a low-variance two-dimensional
+    rotational dynamical system embedded with high-variance, spatially
+    structured white noise: DCA recovers the dynamics, PCA the noise."""
+    rng = np.random.default_rng(3)
+    T = 5000
+    th = 0.1
+    R = 0.98 * np.array([[np.cos(th), -np.sin(th)], [np.sin(th), np.cos(th)]])
+    z = np.zeros((T, 2))
+    for t in range(1, T):
+        z[t] = R @ z[t - 1] + rng.normal(size=2)
+    z = z / z.std(0)
+    noise = rng.normal(size=(T, 10)) * np.r_[5, 4, 3, 2, 1, 1, 1, 1, 1, 1]
+    X = np.column_stack([z, noise]) @ np.linalg.qr(rng.normal(size=(12, 12)))[0]
+    U = unmixing(X, z)
+    W = DCA(n_components=2, T=5, random_state=0).fit(X).linear_transform_
+    assert np.all(subspace_cos(W, U) > 0.999)
+    assert np.all(subspace_cos(PCA(2).fit(X).components_.T, U) < 0.1)
+
+
+def test_dca_predictive_information(three_ar_sources):
+    """predictive_information_ is that of the components (eq. 3), at least
+    that of the true dynamical subspace, and the components are an
+    orthonormal basis (uncorrelated, unit variance)."""
+    S, X = three_ar_sources
+    model = DCA(n_components=3, T=5, random_state=0).fit(X)
+    Y = model.transform(X)
+    np.testing.assert_allclose(model.predictive_information_,
+                               ref.dca_predictive_information_ref(Y, 5), rtol=1e-8)
+    assert model.predictive_information_ >= ref.dca_predictive_information_ref(
+        X @ unmixing(X, S[:, :3]), 5) - 1e-8
+    assert np.all(subspace_cos(model.linear_transform_,
+                               unmixing(X, S[:, :3])) > 0.99)
+    np.testing.assert_allclose(np.cov(Y, rowvar=False), np.eye(3), atol=1e-8)
+
+
+def test_dca_independent_of_initialisation(three_ar_sources):
+    _, X = three_ar_sources
+    a = DCA(n_components=2, random_state=0).fit(X)
+    b = DCA(n_components=2, random_state=1).fit(X)
+    assert np.all(subspace_cos(a.linear_transform_, b.linear_transform_) > 0.9999)
+    np.testing.assert_allclose(a.predictive_information_, b.predictive_information_,
+                               rtol=1e-6)

@@ -195,3 +195,16 @@ def pfa_ref(X, n_components, p=2, k=4):
         C += mean_outer((e, e) for e in errors)
     eigvals, U = np.linalg.eigh(C)
     return Wh @ U[:, :n_components], eigvals
+
+
+def dca_predictive_information_ref(Y, T):
+    """Gaussian predictive information of the time series Y (Clark et al.,
+    2019, eqs. 1-3): 2 H(T) - H(2T), with the entropies of windows of T and
+    2T consecutive time points computed from the log-determinants of the
+    sample covariance of the stacked windows (constants cancel)."""
+    Y = np.asarray(Y, dtype=float).reshape(len(Y), -1)
+    N, d = Y.shape
+    windows = np.column_stack([Y[i:N - 2 * T + 1 + i] for i in range(2 * T)])
+    S = np.cov(windows, rowvar=False)
+    return (np.linalg.slogdet(S[:T * d, :T * d])[1]
+            - 0.5 * np.linalg.slogdet(S)[1])
