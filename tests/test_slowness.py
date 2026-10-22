@@ -3,7 +3,8 @@
 import numpy as np
 import pytest
 
-from tsdr.slowness import SFA, BioSFA
+from tsdr.slowness import SFA, BioSFA, ISFA
+from tsdr._whitening import fit_whitening
 
 from helpers import corr2, subspace_cos, random_mix, ar1
 
@@ -64,3 +65,106 @@ def test_sfa_eigvals_match_component_slowness(slow_sources):
     assert np.all(np.diff(model.eigvals_) > 0)
     np.testing.assert_allclose(np.var(np.diff(Y, axis=0), axis=0, ddof=1),
                                model.eigvals_[:3])
+
+
+@pytest.fixture(scope="module")
+def equal_lag1_sources():
+    """Two sources with equal lag-1 autocorrelation (0.8) but different
+    autocorrelation at longer lags (AR(1) with phi = 0.8, and AR(2) with
+    a1 = 1.04, a2 = -0.3), and four white-noise sources, randomly mixed.
+    SFA cannot separate the two sources, as they are equally slow."""
+    rng = np.random.default_rng(0)
+    T = 20000
+    s1 = ar1(T, 0.8, rng)
+    s2 = np.zeros(T)
+    e = rng.normal(size=T)
+    for t in range(2, T):
+        s2[t] = 1.04 * s2[t - 1] - 0.3 * s2[t - 2] + e[t]
+    S = np.column_stack([s1 / s1.std(), s2 / s2.std(), rng.normal(size=(T, 4))])
+    X, _ = random_mix(S, seed=3)
+    return S, X
+
+
+def lagged_cross_correlation(Y, lags):
+    """Sum of the squared off-diagonal symmetrised time-lagged correlations
+    of the standardised components Y (the ICA part of the ISFA objective)."""
+    Y = (Y - Y.mean(0)) / Y.std(0)
+    total = 0
+    for lag in lags:
+        C = Y[:-lag].T @ Y[lag:] / (len(Y) - lag)
+        C = 0.5 * (C + C.T)
+        total += np.sum(C ** 2) - np.sum(np.diag(C) ** 2)
+    return total
+
+
+def test_isfa_separates_equally_slow_sources(equal_lag1_sources):
+    """ISFA separates two equally slow sources by their independence over
+    several time lags, and its components have smaller time-lagged
+    cross-correlations than those of SFA."""
+    S, X = equal_lag1_sources
+    model = ISFA(n_components=2, random_state=0).fit(X)
+    Y = model.transform(X)
+    R2 = np.array([[corr2(Y[:, i], S[:, k]) for k in range(2)] for i in range(2)])
+    assert np.all(R2.max(axis=0) > 0.99)
+    assert sorted(R2.argmax(axis=0)) == [0, 1]
+    Y_sfa = SFA(n_components=2).fit_transform(X)
+    lags = range(1, 11)
+    assert lagged_cross_correlation(Y, lags) < lagged_cross_correlation(Y_sfa, lags)
+
+
+def test_isfa_givens_rotation_objective(equal_lag1_sources):
+    """As a function of the rotation angle in a plane, the ISFA objective is
+    a trigonometric polynomial in 2 phi and 4 phi (Blaschke et al., 2007,
+    eqs. 4.10-4.11), and the optimal angle minimises it."""
+    _, X = equal_lag1_sources
+    Xw = fit_whitening(X).transform(X)
+    T = len(Xw)
+    C = []
+    for lag in [1, 1, 2, 3]:
+        Ctau = Xw[:-lag].T @ Xw[lag:] / (T - lag - 1)
+        C.append(0.5 * (Ctau + Ctau.T))
+    C = np.array(C)
+    model = ISFA(n_components=2, lags=3)
+    f = lambda phi: model._objective(model._rotate(C, 0, 3, phi)[0])
+    angles = np.linspace(-np.pi / 2, np.pi / 2, 9)
+    basis = np.column_stack([np.ones(9), np.cos(2 * angles), np.sin(2 * angles),
+                             np.cos(4 * angles), np.sin(4 * angles)])
+    coef = np.linalg.lstsq(basis, [f(a) for a in angles], rcond=None)[0]
+    np.testing.assert_allclose(basis @ coef, [f(a) for a in angles], atol=1e-12)
+    phi = model._optimal_angle(C, 0, 3)
+    assert f(phi) <= min(f(a) for a in np.linspace(-np.pi / 2, np.pi / 2, 1001)) + 1e-12
+
+
+def test_isfa_objective_improves_on_sfa(equal_lag1_sources):
+    """ISFA starts from the SFA solution, and the Givens rotations do not
+    increase the objective."""
+    _, X = equal_lag1_sources
+    model = ISFA(n_components=2, random_state=0).fit(X)
+    Xw = fit_whitening(X).transform(X)
+    W_sfa = np.linalg.eigh(0.5 * (Xw[:-1].T @ Xw[1:] + Xw[1:].T @ Xw[:-1]))[1][:, ::-1]
+    T = len(Xw)
+    C = []
+    for lag in range(0, 11):
+        lag = max(lag, 1)
+        Ctau = Xw[:-lag].T @ Xw[lag:] / (T - lag - 1)
+        C.append(0.5 * (Ctau + Ctau.T))
+    C = W_sfa.T @ np.array(C) @ W_sfa
+    assert model.objective_ <= model._objective(C) + 1e-12
+
+
+def test_isfa_all_components_recover_sources(equal_lag1_sources):
+    """With as many components as features, ISFA is a second-order ICA that
+    recovers each source with distinct temporal structure."""
+    S, X = equal_lag1_sources
+    Y = ISFA(n_components=X.shape[1], random_state=0).fit_transform(X)
+    for k in range(2):
+        assert max(corr2(Y[:, i], S[:, k]) for i in range(Y.shape[1])) > 0.99
+
+
+def test_isfa_independent_of_pair_order(equal_lag1_sources):
+    _, X = equal_lag1_sources
+    a = ISFA(n_components=2, random_state=0).fit(X)
+    b = ISFA(n_components=2, random_state=1).fit(X)
+    assert np.all(subspace_cos(a.linear_transform_[:, :1],
+                               b.linear_transform_[:, :1]) > 0.9999)
+    np.testing.assert_allclose(a.objective_, b.objective_, rtol=1e-6)

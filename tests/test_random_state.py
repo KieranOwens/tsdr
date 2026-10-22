@@ -5,7 +5,7 @@ unchanged, and None uses the global NumPy random state."""
 import numpy as np
 import pytest
 
-from tsdr.slowness import BioSFA
+from tsdr.slowness import BioSFA, ISFA
 from tsdr.nonstationarity import BSSnonstat
 from tsdr.latentvariable import LDS
 from tsdr.predictability import ForeCA
@@ -14,6 +14,7 @@ from helpers import random_mix, ar1
 
 METHODS = {
     "BioSFA": lambda rs: BioSFA(n_components=2, n_iters=50, random_state=rs),
+    "ISFA": lambda rs: ISFA(n_components=2, lags=3, random_state=rs),
     "BSSnonstat": lambda rs: BSSnonstat(n_components=2, max_iters=5,
                                         random_state=rs),
     "LDS": lambda rs: LDS(n_components=2, max_iter=2, random_state=rs),
