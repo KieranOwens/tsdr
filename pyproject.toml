@@ -1,6 +1,6 @@
 [project]
 name = "tsdr"
-version = "0.8"
+version = "0.9"
 authors = [
     {name = "Kieran S Owens", email = "kowe6911@uni.sydney.edu.au"},
 ]
