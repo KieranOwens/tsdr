@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 import scipy
 
-from tsdr.slowness import SFA, BioSFA, ISFA
+from tsdr.slowness import SFA, BioSFA, ISFA, SICA
 from tsdr.autocorrelation import TICA, TMCA, CSA, TCCA_Stiefel, sPCA_dwt
 from tsdr.predictability import TLPC, PrCA, DiCCA, ForeCA, PFA, PTS
 from tsdr.determinism import DyCA, DMD
@@ -27,6 +27,7 @@ METHODS = {
     "SFA": lambda: SFA(),
     "BioSFA": lambda: BioSFA(),
     "ISFA": lambda: ISFA(random_state=0),
+    "SICA": lambda: SICA(random_state=0),
     "TICA": lambda: TICA(lag=10),
     "TMCA": lambda: TMCA(lag=10),
     "CSA": lambda: CSA(lag=5),

@@ -5,6 +5,7 @@
 # SFA - Slow Feature Analysis
 # BioSFA - Biologically plausible SFA
 # ISFA - Independent Slow Feature Analysis
+# SICA - Slow Independent Component Analysis
 
 import numbers
 import warnings
@@ -555,6 +556,216 @@ class ISFA():
         # get linear transformation
         transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
         transform2 = Q[:,order]
+        self.linear_transform_ = transform1 @ transform2
+
+        return self
+
+    def transform(self, X):
+        """Apply dimension reduction to X.
+
+        Parameters
+        ----------
+        X : ndarray, shape (n_samples, n_features)
+            A multivariate time series of shape (n_samples, n_features).
+
+        Returns
+        -------
+        X_new: ndarray, shape (n_samples, n_components)
+            A (possibly multivariate) time series of independent components 
+            ordered by slowness.
+        """
+
+        return X @ self.linear_transform_
+
+    def fit_transform(self, X, y=None):
+        """Fit the model to X and apply dimension reduction to X.
+
+        Parameters
+        ----------
+        X : ndarray, shape (n_samples, n_features)
+            A multivariate time series of shape (n_samples, n_features).
+
+        y : None
+            Ignored. Used to comply with the scikit-learn API.
+
+        Returns
+        -------
+        X_new: ndarray, shape (n_samples, n_components)
+            A (possibly multivariate) time series of independent components 
+            ordered by slowness.
+        """
+
+        self.fit(X)
+        
+        return self.transform(X)
+
+###############################################################################
+###############################################################################
+# SICA - Slow Independent Component Analysis
+###############################################################################
+###############################################################################
+
+class SICA():
+    """
+    Slow Independent Component Analysis (SICA).
+
+    SICA is a TSDR method for extracting components from a multivariate time 
+    series that are both slow (i.e., for which the square of the first 
+    temporal derivative is minimised) and non-Gaussian (as in FastICA), 
+    combining FastICA with SFA, so that Gaussian components can be separated 
+    by their slowness.
+
+    The steps involved in SICA are: (1) whiten the data, (2) compute the 
+    covariance Q of the temporal derivative (differences) of the whitened 
+    data, (3) from a random orthonormal initialisation, minimise 
+    E{G(w^T z)} + a * w^T Q w for each of the n_features components w, with 
+    G(u) = log cosh(u), by Newton iterations, decorrelating the components by
+    symmetric orthogonalisation after each iteration, (4) order the 
+    components by slowness and select the n_components slowest, and (5) 
+    apply the linear transformation to the whitened data.
+
+    The weight a balances independence and slowness: for a = 0 SICA is 
+    FastICA (minimising E{G(w^T z)}, which favours super-Gaussian 
+    components), and as a grows SICA approaches SFA.
+
+    Reference: Feng, Zhao & Huang (2019) A slow independent component 
+    analysis algorithm for time series feature extraction with the concurrent 
+    consideration of high-order statistic and slowness, J Process Control.
+
+    Parameters
+    ----------
+    n_components: int
+        The dimension (number of variables) of the time-series output.
+        Default: 1.
+
+    a: float
+        The weight of the slowness part of the objective.
+        Default: 1.0.
+
+    max_iters: int
+        The maximum number of Newton iterations. A ConvergenceWarning is 
+        raised if the algorithm has not converged (see tol) after max_iters 
+        iterations.
+        Default: 200.
+
+    tol: float
+        The algorithm stops when the largest change in a weight vector 
+        (1 - |w_new^T w|) falls below tol.
+        Default: 1e-8.
+
+    random_state: int, RandomState instance or None
+        Controls the random initialisation. Pass an int for reproducible 
+        results across calls (the global NumPy random state is then left 
+        unchanged). If None, the global NumPy random state is used.
+        Default: None.
+
+    Attributes
+    ----------
+    linear_transform_: ndarray, shape (n_features, n_components)
+        The linear transformation that yields the SICA components when applied 
+        to the input time series X.
+
+    slowness_: ndarray, shape (n_components,)
+        The slowness (variance of the temporal derivative) of each 
+        unit-variance component, in ascending order (slowest first).
+    """
+
+    def __init__(self, n_components=1, a=1.0, max_iters=200, tol=1e-8, 
+                 random_state=None):
+
+        self.n_components = n_components
+        self.a = a
+        self.max_iters = max_iters
+        self.tol = tol
+        self.random_state = random_state
+
+    def fit(self, X, y=None):
+        """Fit the model to X
+
+        Parameters
+        ----------
+        X : ndarray, shape (n_samples, n_features)
+            A multivariate time series of shape (n_samples, n_features).
+
+        y : None
+            Ignored. Used to comply with the scikit-learn API.
+
+        Returns
+        -------
+        self : object
+            Returns self.
+        """
+
+        # fit a PCA whitening model
+        pca_white = fit_whitening(X)
+
+        # whiten the data
+        Z = pca_white.transform(X)
+
+        # data dimensions
+        T, D = Z.shape
+
+        # covariance of the temporal derivative, Q = E{z' z'^T}
+        Zdot = Z[1:,:] - Z[:-1,:]
+        Q = Zdot.T @ Zdot / (T - 1)
+
+        # random orthonormal initialisation of all D components (which are
+        # then ordered by slowness), Feng et al. (2019) Fig. 3
+        rng = check_random_state(self.random_state)
+        W = np.linalg.qr(rng.normal(size=(D, D)))[0]
+
+        converged = False
+        for _ in range(self.max_iters):
+
+            # G(u) = log cosh(u), g(u) = tanh(u), g'(u) = 1 - tanh(u)^2
+            U = Z @ W
+            g = np.tanh(U)
+            dg = 1 - g**2
+
+            W_new = np.zeros_like(W)
+            for i in range(D):
+                w = W[:,i]
+
+                # Lagrange multiplier, Feng et al. (2019) eq. (24)
+                lam = -0.5 * (np.mean(U[:,i] * g[:,i]) + 2 * self.a * w @ Q @ w)
+
+                # gradient and approximate Jacobian of the Lagrangian, 
+                # Feng et al. (2019) eqs. (22) and (26)
+                grad = Z.T @ g[:,i] / T + 2 * self.a * Q @ w + 2 * lam * w
+                J = (np.mean(dg[:,i]) + 2 * lam) * np.eye(D) + 2 * self.a * Q
+
+                # Newton step (adding a constant to the diagonal of the 
+                # Jacobian if it is singular, Feng et al. (2019) eq. (30))
+                if np.min(np.abs(np.linalg.eigvalsh(J))) < 1e-10:
+                    J = J + 1e-6 * np.eye(D)
+                W_new[:,i] = w - np.linalg.solve(J, grad)
+
+            # symmetric decorrelation, W = W (W^T W)^(-1/2), Feng et al. 
+            # (2019) Fig. 3
+            eigvals, eigvecs = np.linalg.eigh(W_new.T @ W_new)
+            W_new = W_new @ eigvecs @ np.diag(eigvals**-0.5) @ eigvecs.T
+
+            # change in the weight vectors (up to sign)
+            delta = np.max(1 - np.abs(np.sum(W_new * W, axis=0)))
+            W = W_new
+            if delta < self.tol:
+                converged = True
+                break
+
+        if not converged:
+            warnings.warn(f"SICA did not converge in max_iters={self.max_iters} "
+                          f"iterations (change {delta:.2e} >= tol={self.tol}); "
+                          "consider increasing max_iters.", ConvergenceWarning)
+
+        # order the components by slowness, Feng et al. (2019) eq. (19), 
+        # and select the n_components slowest
+        slowness = np.diag(W.T @ Q @ W)
+        order = np.argsort(slowness)[:self.n_components]
+        self.slowness_ = slowness[order]
+
+        # get linear transformation
+        transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
+        transform2 = W[:,order]
         self.linear_transform_ = transform1 @ transform2
 
         return self

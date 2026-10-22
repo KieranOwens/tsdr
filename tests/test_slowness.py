@@ -2,8 +2,9 @@
 
 import numpy as np
 import pytest
+from sklearn.decomposition import FastICA
 
-from tsdr.slowness import SFA, BioSFA, ISFA
+from tsdr.slowness import SFA, BioSFA, ISFA, SICA
 from tsdr._whitening import fit_whitening
 
 from helpers import corr2, subspace_cos, random_mix, ar1
@@ -168,3 +169,71 @@ def test_isfa_independent_of_pair_order(equal_lag1_sources):
     assert np.all(subspace_cos(a.linear_transform_[:, :1],
                                b.linear_transform_[:, :1]) > 0.9999)
     np.testing.assert_allclose(a.objective_, b.objective_, rtol=1e-6)
+
+
+@pytest.fixture(scope="module")
+def gaussian_and_laplace_sources():
+    """Two Gaussian sources of different slowness (AR(1) with phi = 0.99 and
+    0.5), which ICA cannot separate, and two white Laplace (super-Gaussian)
+    sources, which SFA cannot separate, randomly mixed."""
+    rng = np.random.default_rng(0)
+    T = 10000
+    S = np.column_stack([ar1(T, .99, rng), ar1(T, .5, rng),
+                         rng.laplace(size=T), rng.laplace(size=T)])
+    S = S / S.std(0)
+    X, _ = random_mix(S, seed=1)
+    return S, X
+
+
+def best_corr2(Y, S):
+    """For each source, the largest squared correlation with a component."""
+    return np.array([max(corr2(Y[:, i], S[:, k]) for i in range(Y.shape[1]))
+                     for k in range(S.shape[1])])
+
+
+def test_sica_separates_gaussian_and_non_gaussian_sources(gaussian_and_laplace_sources):
+    """By combining non-Gaussianity and slowness, SICA separates the Gaussian
+    sources by their slowness and the Laplace sources by their
+    non-Gaussianity (Feng et al., 2019, Sec. 3.2)."""
+    S, X = gaussian_and_laplace_sources
+    model = SICA(n_components=4, a=1.0, random_state=0).fit(X)
+    Y = model.transform(X)
+    assert np.all(best_corr2(Y, S) > 0.99)
+    assert np.all(np.diff(model.slowness_) > 0)
+    np.testing.assert_allclose(np.cov(Y, rowvar=False), np.eye(4), atol=1e-8)
+
+
+def test_sica_selects_slowest_components(gaussian_and_laplace_sources):
+    S, X = gaussian_and_laplace_sources
+    Y = SICA(n_components=2, random_state=0).fit_transform(X)
+    assert corr2(Y[:, 0], S[:, 0]) > 0.99
+    assert corr2(Y[:, 1], S[:, 1]) > 0.99
+
+
+def test_sica_without_slowness_is_fastica():
+    """For a = 0, SICA is FastICA with G(u) = log cosh(u) and symmetric
+    decorrelation (Feng et al., 2019, Sec. 3.3.2)."""
+    rng = np.random.default_rng(5)
+    S = rng.laplace(size=(10000, 4))
+    X, _ = random_mix(S, seed=2)
+    Y = SICA(n_components=4, a=0.0, random_state=0).fit_transform(X)
+    Y_ica = FastICA(n_components=4, whiten='unit-variance',
+                    random_state=0).fit_transform(X)
+    assert np.all(best_corr2(Y, S) > 0.99)
+    assert np.all(best_corr2(Y, Y_ica) > 0.9999)
+
+
+def test_sica_large_slowness_weight_is_sfa(gaussian_and_laplace_sources):
+    """As a grows, SICA approaches SFA (Feng et al., 2019, Sec. 3.3.2)."""
+    _, X = gaussian_and_laplace_sources
+    Y = SICA(n_components=4, a=1e4, random_state=0).fit_transform(X)
+    Y_sfa = SFA(n_components=4).fit_transform(X)
+    for i in range(4):
+        assert corr2(Y[:, i], Y_sfa[:, i]) > 0.999
+
+
+def test_sica_independent_of_initialisation(gaussian_and_laplace_sources):
+    _, X = gaussian_and_laplace_sources
+    a = SICA(n_components=4, random_state=0).fit_transform(X)
+    b = SICA(n_components=4, random_state=1).fit_transform(X)
+    assert np.all(best_corr2(a, b) > 0.9999)

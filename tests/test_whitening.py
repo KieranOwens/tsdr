@@ -4,7 +4,7 @@ error rather than return non-finite or arbitrary components."""
 import numpy as np
 import pytest
 
-from tsdr.slowness import SFA, BioSFA, ISFA
+from tsdr.slowness import SFA, BioSFA, ISFA, SICA
 from tsdr.autocorrelation import TICA, TMCA, CSA, TCCA_Stiefel, sPCA_dwt
 from tsdr.predictability import TLPC, PrCA, DiCCA, ForeCA, PFA, PTS
 from tsdr.determinism import DyCA, DMD
@@ -15,7 +15,8 @@ from tsdr.latentvariable import LDS
 from helpers import corr2, random_mix, ar1
 
 METHODS = {
-    "SFA": SFA, "BioSFA": BioSFA, "ISFA": ISFA, "TICA": TICA, "TMCA": TMCA, "CSA": CSA,
+    "SFA": SFA, "BioSFA": BioSFA, "ISFA": ISFA, "SICA": SICA,
+    "TICA": TICA, "TMCA": TMCA, "CSA": CSA,
     "TCCA_Stiefel": TCCA_Stiefel, "sPCA_dwt": sPCA_dwt, "TLPC": TLPC,
     "PrCA": PrCA, "DiCCA": DiCCA, "ForeCA": ForeCA, "PFA": PFA, "PTS": PTS,
     "DyCA": DyCA, "DMD": DMD, "ASSA": ASSA,

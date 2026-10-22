@@ -10,7 +10,7 @@
 
 _tsdr_ is a Python package of time-series dimension reduction (TSDR) methods: algorithms that reduce multivariate data to a few components by exploiting temporal structure.
 In contrast to general dimension reduction (GDR) methods, whose outputs are invariant to temporal permutation, TSDR methods are sensitive to temporal structure.
-The package implements 26 methods from the seven categories of TSDR methods defined in [Owens & Fulcher (2025)](https://doi.org/10.36227/techrxiv.176409662.29359239/v1), written in a simple, readable style to help time-series analysts understand the algorithms discussed in that review.
+The package implements 27 methods from the seven categories of TSDR methods defined in [Owens & Fulcher (2025)](https://doi.org/10.36227/techrxiv.176409662.29359239/v1), written in a simple, readable style to help time-series analysts understand the algorithms discussed in that review.
 
 ## Installation
 
@@ -70,7 +70,7 @@ Each is imported from the module named in the first column, e.g., `from tsdr.slo
 
 | Category | Module | Methods |
 |---|---|---|
-| (a) Slowness | `tsdr.slowness` | `SFA` (slow feature analysis), `BioSFA` (biologically plausible SFA), `ISFA` (independent slow feature analysis) |
+| (a) Slowness | `tsdr.slowness` | `SFA` (slow feature analysis), `BioSFA` (biologically plausible SFA), `ISFA` (independent slow feature analysis), `SICA` (slow independent component analysis) |
 | (b) Autocorrelation | `tsdr.autocorrelation` | `TICA` (time-lagged independent component analysis), `TMCA` (time-lagged maximum covariance analysis), `CSA` (colored subspace analysis), `TCCA_Stiefel` (time-lagged canonical component analysis by trace optimization on the Stiefel manifold), `sPCA_dwt` (spectral PCA using the discrete wavelet transform) |
 | (c) Predictability | `tsdr.predictability` | `TLPC` (temporally local predictive coding), `PrCA` (predictable component analysis), `DiCCA` (dynamic inner canonical correlation analysis), `ForeCA` (forecastable component analysis), `PFA` (predictable feature analysis), `PTS` (principal time series) |
 | (d) Determinism | `tsdr.determinism` | `DyCA` (dynamical component analysis), `DMD` (dynamic mode decomposition) |
@@ -82,7 +82,7 @@ The figure at the top summarizes these categories.
 
 A few methods differ from the common pattern:
 
-- Methods with a random initialization or random order of updates (`BioSFA`, `ISFA`, `ForeCA`, `BSSnonstat`, `LDS`) accept a `random_state` argument for reproducible results; `TCCA_Stiefel` uses a `seed` argument.
+- Methods with a random initialization or random order of updates (`BioSFA`, `ISFA`, `SICA`, `ForeCA`, `BSSnonstat`, `LDS`) accept a `random_state` argument for reproducible results; `TCCA_Stiefel` uses a `seed` argument.
 - The diffusion methods (`DMcov`, `DIG`) embed sliding windows of the time series (of length `window`, every `step` samples) rather than individual time points, so `fit_transform` returns one row per window and there is no separate `transform`.
 
 ## Citation
