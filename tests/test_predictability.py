@@ -405,7 +405,7 @@ def test_dca_predictive_information(three_ar_sources):
     model = DCA(n_components=3, T=5, random_state=0).fit(X)
     Y = model.transform(X)
     np.testing.assert_allclose(model.predictive_information_,
-                               ref.dca_predictive_information_ref(Y, 5), rtol=1e-8)
+                               ref.dca_predictive_information_ref(Y, 5), rtol=1e-4)
     assert model.predictive_information_ >= ref.dca_predictive_information_ref(
         X @ unmixing(X, S[:, :3]), 5) - 1e-8
     assert np.all(subspace_cos(model.linear_transform_,
@@ -420,3 +420,16 @@ def test_dca_independent_of_initialisation(three_ar_sources):
     assert np.all(subspace_cos(a.linear_transform_, b.linear_transform_) > 0.9999)
     np.testing.assert_allclose(a.predictive_information_, b.predictive_information_,
                                rtol=1e-6)
+
+
+def test_dca_noise_free_signal():
+    """A sinusoid in low-rank noise has a noise-free direction, whose 
+    predictive information is unbounded (its projected covariance is 
+    singular): DCA fits without error and recovers the sinusoid."""
+    rng = np.random.default_rng(0)
+    T, D = 1000, 10
+    z = np.sin(np.linspace(0, 4 * np.pi, T))
+    noise = rng.normal(size=(T, D - 2)) @ rng.normal(size=(D - 2, D - 1))
+    X = np.column_stack([z, noise]) @ scipy.stats.ortho_group.rvs(D, random_state=0)[:, :D - 1]
+    Y = DCA(random_state=0).fit_transform(X)
+    assert corr2(Y, z) > 0.99

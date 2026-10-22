@@ -1254,7 +1254,9 @@ class DCA():
         to the input time series X.
 
     predictive_information_: float
-        The Gaussian predictive information (in nats) of the components.
+        The Gaussian predictive information (in nats) of the components 
+        (computed with a small ridge, 1e-6, on the covariance of the whitened 
+        data, which keeps it finite for noise-free projections).
     """
 
     def __init__(self, n_components=1, T=5, n_init=5, ortho_penalty=1.0, 
@@ -1319,6 +1321,11 @@ class DCA():
         # Clark et al. (2019) eq. (2)
         windows = np.column_stack([Xw[i:N - 2 * self.T + 1 + i,:] for i in range(2 * self.T)])
         Sigma = np.cov(windows, rowvar=False)
+
+        # small ridge, so that the predictive information stays finite when a 
+        # projection of the data is (nearly) deterministic, e.g., a noise-free 
+        # signal, for which the projected covariance is singular
+        Sigma = Sigma + 1e-6 * np.eye(len(Sigma))
 
         # loss: minus the predictive information plus the orthonormality 
         # penalty, Clark et al. (2019) Appendix eq. (1)
