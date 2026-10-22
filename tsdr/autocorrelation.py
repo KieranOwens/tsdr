@@ -301,7 +301,7 @@ class TCCA_Stiefel:
         The maximum number of iterations during trace optimisation. A
         ConvergenceWarning is raised if the optimisation has not converged
         (see tol) after max_iters iterations.
-        Default: 100.
+        Default: 1000.
 
     lr: float
         The learning rate used for gradient descent during trace optimisation.
@@ -327,7 +327,7 @@ class TCCA_Stiefel:
         The linear transformation that yields the TCCA components when applied 
         to the input time series X.
     """
-    def __init__(self, n_components=1, lag=1, max_iters=100, lr=0.1, seed=0, whiten=True,
+    def __init__(self, n_components=1, lag=1, max_iters=1000, lr=0.1, seed=0, whiten=True,
                  tol=1e-6):
         self.n_components = n_components
         self.lag = lag
@@ -515,12 +515,6 @@ class CSA():
         or else a list of specified lags.
         Default: 1.
 
-    method: str
-        The method by which CSA is computed. Options include 'jd'
-        (joint diagonalisations), 'scca' (subspace candidate component
-        analysis), and 'jla' (joint low-rank approximation).
-        Default: 'jd'.
-
     Attributes
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
@@ -650,17 +644,25 @@ class CSA():
 
 class sPCA_dwt():
     """
-    Spectral Principal Component Analysis (sPCA) using the discrete wavelet
-    transform.
+    Spectral Principal Component Analysis using a single-level discrete 
+    wavelet transform (sPCA_dwt).
 
-    sPCA_dwt is a TSDR method for  extracting period (hence, autocorrelated) 
-    components from a multivariate time series
+    sPCA_dwt is a TSDR method that applies PCA (or SVD) to the low-pass 
+    (approximation) coefficients of a real discrete wavelet transform (DWT), 
+    emphasising slow, autocorrelated structure in the data.
 
-    The steps involved in sPCA-dwt are: (1) optionally whiten the data, 
-    (2) compute the discrete wavelet transform (DWT) of the data,
-    (3) perform PCA or SVD on DWT(X), (4) retain the components corresponding
-    to the largest eigenvalues/singular values, (5) project back into the
-    time domain by applying the inverse DWT to the components.
+    The steps involved in sPCA_dwt are: (1) optionally whiten the data, 
+    (2) compute one level of the DWT along time and keep only the 
+    approximation coefficients (about n_samples / 2 rows), (3) perform PCA or 
+    SVD on these coefficients, (4) retain the leading n_components, and 
+    (5) map the components back to the time domain with the inverse DWT.
+
+    Note: this is a simplified variant inspired by Guilloteau et al. (2021). 
+    It is NOT their Morlet-wavelet rotated spectral PCA (rsPCA), which uses a 
+    continuous wavelet transform and a different construction.
+
+    The method does not learn a linear map of the features, so there is no 
+    ``transform`` method. Use ``fit_transform``.
 
     Reference: Guilloteau et al (2021) Rotated spectral PCA for identifying
     dynamical modes of variability in climate systems, J of Climate.
@@ -672,22 +674,9 @@ class sPCA_dwt():
         Default: 1.
 
     wavelet: str
-        Specify a PyWavelet discrete wavelet. Options include 'bior1.1', 
-        'bior1.3', 'bior1.5', 'bior2.2', 'bior2.4', 'bior2.6', 'bior2.8', 
-        'bior3.1', 'bior3.3', 'bior3.5', 'bior3.7', 'bior3.9', 'bior4.4', 
-        'bior5.5', 'bior6.8', 'coif1', 'coif2', 'coif3', 'coif4', 'coif5', 
-        'coif6', 'coif7', 'coif8', 'coif9', 'coif10', 'coif11', 'coif12', 
-        'coif13', 'coif14', 'coif15', 'coif16', 'coif17', 'db1', 'db2', 
-        'db3', 'db4', 'db5', 'db6', 'db7', 'db8', 'db9', 'db10', 'db11', 
-        'db12', 'db13', 'db14', 'db15', 'db16', 'db17', 'db18', 'db19', 
-        'db20', 'db21', 'db22', 'db23', 'db24', 'db25', 'db26', 'db27', 
-        'db28', 'db29', 'db30', 'db31', 'db32', 'db33', 'db34', 'db35', 
-        'db36', 'db37', 'db38', 'dmey', 'haar', 'rbio1.1', 'rbio1.3', 
-        'rbio1.5', 'rbio2.2', 'rbio2.4', 'rbio2.6', 'rbio2.8', 'rbio3.1', 
-        'rbio3.3', 'rbio3.5', 'rbio3.7', 'rbio3.9', 'rbio4.4', 'rbio5.5', 
-        'rbio6.8', 'sym2', 'sym3', 'sym4', 'sym5', 'sym6', 'sym7', 'sym8', 
-        'sym9', 'sym10', 'sym11', 'sym12', 'sym13', 'sym14', 'sym15', 'sym16', 
-        'sym17', 'sym18', 'sym19', 'sym20'
+        Any PyWavelets discrete wavelet name; see
+        ``pywt.wavelist(kind='discrete')``. Examples: 'db1' (Haar), 'db4', 
+        'sym5', 'coif3'.
         Default: 'db1'.
 
     whiten: bool
@@ -734,30 +723,31 @@ class sPCA_dwt():
         # discrete wavelet transform
         dwt = pywt.dwt(X, self.wavelet, axis=0)[0]
 
-        # principal component analysis
-        if self.method == 'pca':
+        # centre the approximation coefficients
+        dwt = dwt - dwt.mean(axis=0)
 
-            # PCA
-            pc = PCA(n_components=self.n_components).fit_transform(dwt)
+        if self.method not in ('pca', 'svd'):
+            raise ValueError(f"Unknown method '{self.method}'; use 'pca' or 'svd'.")
 
-            # inverse discrete wavelet transform
-            self.components = pywt.idwt(pc, 
-                                        cD=None, wavelet=self.wavelet, axis=0)
+        # principal component scores via SVD (identical to sklearn PCA scores
+        # up to sign, and valid for both methods)
+        U, s, _ = np.linalg.svd(dwt, full_matrices=False)
+        scores = U[:, :self.n_components] * s[:self.n_components]
 
-        # singular value decomposition
-        elif self.method == 'svd':
-
-            # SVD
-            U, _, _ = np.linalg.svd(dwt)
-
-            # inverse discrete wavelet transform
-            self.components = pywt.idwt(U[:,0:self.n_components], 
-                                        cD=None, wavelet=self.wavelet, axis=0)
+        # inverse discrete wavelet transform
+        self.components = pywt.idwt(scores, cD=None, wavelet=self.wavelet, axis=0)
 
         # the inverse DWT has an extra sample for odd T
         self.components = self.components[:T]
 
         return self
+
+    def transform(self, X):
+        """Not supported: sPCA_dwt is transductive. Use ``fit_transform``."""
+        raise NotImplementedError(
+            "sPCA_dwt returns component time series of the fitted data and "
+            "has no out-of-sample transform; use fit_transform(X)."
+        )
 
     def fit_transform(self, X, y=None):
         """Fit the model to X and apply dimension reduction to X.
@@ -774,7 +764,7 @@ class sPCA_dwt():
         -------
         X_new: ndarray, shape (n_samples, n_components)
             A (possibly multivariate) time series of components ordered by 
-            autocorrelation.
+            variance they explain in the low-pass DWT coefficients.
         """
 
         self.fit(X)

@@ -40,8 +40,9 @@ def test_dmcov_normalised_is_leading_nontrivial_eigenvector(drifting_mean):
     Y = model.fit_transform(X)
     G = model._cov_distance_matrix(X - X.mean(0))
     K = np.exp(-G ** 2 / model.sigma)
-    np.fill_diagonal(K, 0)
     d = K.sum(1)
-    _, V = np.linalg.eigh(K / np.sqrt(np.outer(d, d)))
+    lam, V = np.linalg.eigh(K / np.sqrt(np.outer(d, d)))
+    trivial = np.argmax(lam)
+    order = [i for i in np.argsort(-np.abs(lam)) if i != trivial]
     for i in range(2):
-        assert corr2(Y[:, i], V[:, -2 - i]) > 0.999
+        assert corr2(Y[:, i], V[:, order[i]]) > 0.999

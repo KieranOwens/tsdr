@@ -8,7 +8,7 @@ from sklearn.exceptions import ConvergenceWarning
 
 from tsdr.autocorrelation import TICA, TCCA_Stiefel, sPCA_dwt
 
-from helpers import subspace_cos, random_mix, ar1
+from helpers import subspace_cos, random_mix, ar1, corr2
 
 
 @pytest.fixture(scope="module")
@@ -67,3 +67,25 @@ def test_spca_dwt_output_length(T, method, wavelet):
     Y = sPCA_dwt(n_components=2, method=method, wavelet=wavelet).fit_transform(X)
     assert Y.shape == (T, 2)
     assert np.corrcoef(Y[:, 0], z)[0, 1] ** 2 > 0.99
+
+@pytest.mark.parametrize("T", [1000, 1001])
+@pytest.mark.parametrize("wavelet", ["db1", "db4"])
+@pytest.mark.parametrize("whiten", [True, False])
+def test_spca_dwt_pca_and_svd_agree(T, wavelet, whiten):
+    """method='pca' and method='svd' give the same components (up to sign)."""
+    rng = np.random.default_rng(0)
+    z = np.sin(np.linspace(0, 4 * np.pi, T))
+    X, _ = random_mix(np.column_stack([z, rng.normal(size=(T, 4))]), seed=0)
+
+    kwargs = dict(n_components=2, wavelet=wavelet, whiten=whiten)
+    Y_pca = sPCA_dwt(method="pca", **kwargs).fit_transform(X)
+    Y_svd = sPCA_dwt(method="svd", **kwargs).fit_transform(X)
+
+    assert Y_pca.shape == Y_svd.shape == (T, 2)
+
+    # the leading component is the same series (corr2 ignores sign and scale)
+    assert corr2(Y_pca[:, 0], Y_svd[:, 0]) > 0.999
+
+    # the two-component subspaces coincide (robust to rotation within the
+    # subspace if the 2nd and 3rd singular values are close)
+    assert np.all(subspace_cos(Y_pca, Y_svd) > 0.999)

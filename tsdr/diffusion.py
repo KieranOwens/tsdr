@@ -6,11 +6,12 @@
 # DIG - Dynamical Information Geometry
 
 import numpy as np
-import scipy
+import scipy.linalg
+import scipy.spatial.distance
 from kneed import KneeLocator
 from sklearn.neighbors import NearestNeighbors
-from sklearn.manifold import MDS, SpectralEmbedding
-from sklearn.decomposition import PCA
+from sklearn.manifold import MDS
+
 
 ###############################################################################
 ###############################################################################
@@ -31,8 +32,8 @@ class DMcov():
     kernel to the distance matrix to obtain W, (3) compute the diagonal matrix 
     D by summing across rows of W, (4) compute the normalised matrix D^(-1/2) W D^(-1/2)
     or the graph Laplacian L = D - W, (5) apply eigendecomposition to 
-    the matrix from (4) and return the leading eigenvectors (after discarding 
-    the first eigenvector).
+    the matrix from (4) and return the leading eigenvectors ranked by absolute
+    eigenvalue (after discarding the first eigenvector).
 
     Warning: The behaviour of this function has not been thoroughly tested.
 
@@ -80,16 +81,14 @@ class DMcov():
         self.normalise = normalise
 
     def _spd_geodesic(self, A, B):
-
-        A_neg_root = np.linalg.pinv(scipy.linalg.sqrtm(A))
-        log_term = scipy.linalg.logm(A_neg_root @ B @ A_neg_root)
-
-        return np.linalg.norm(log_term)
+        # ||log(A^-1/2 B A^-1/2)||_F via generalised eigenvalues of (B, A)
+        lam = scipy.linalg.eigvalsh(B, A)
+        return np.sqrt(np.sum(np.log(lam) ** 2))
     
     def _cov_distance(self, X, Y):
 
-        Cx = X.T @ X / (X.shape[0] - 1)
-        Cy = Y.T @ Y / (Y.shape[0] - 1)
+        Cx = np.cov(X, rowvar=False)
+        Cy = np.cov(Y, rowvar=False)
         mu_diff = (np.mean(X, axis=0) - np.mean(Y, axis=0)).reshape(-1,1)
         
         if self.distance == 'frobenius':
@@ -99,10 +98,15 @@ class DMcov():
         elif self.distance == 'geodesic':
 
             return self._spd_geodesic(Cx, Cy)
-        
-        elif self.distance == 'mahalanobis': # From Duque et al, 2019
 
-            return (mu_diff.T @ np.linalg.pinv(Cx + Cy) @ mu_diff)[0,0]
+        elif self.distance == 'mahalanobis':
+            # Duque et al (2019) Eq. 6 form, using window means and
+            # within-window covariances. The quadratic form is d^2 already,
+            # so return its root since the kernel squares the distance.
+            # This is a simplification of Duque et al (2019) which works in
+            # histogram space
+            q = (mu_diff.T @ np.linalg.pinv(Cx + Cy) @ mu_diff)[0, 0]
+            return np.sqrt(max(q, 0.0))
         
     def _cov_distance_matrix(self, X):
 
@@ -141,8 +145,8 @@ class DMcov():
 
         # Gaussian kernel weights matrix
         W = np.exp(-W**2/self.sigma)
-        for i in range(W.shape[0]):
-            W[i,i] = 0.0
+        # for i in range(W.shape[0]):
+        #     W[i,i] = 0.0
 
         # diagonal weights matrix
         D = np.diag(np.sum(W, axis=0))
@@ -156,11 +160,15 @@ class DMcov():
             Wnorm = D_neg_root @ W @ D_neg_root
 
             # eigendecomposition (eigenvalues in ascending order)
-            _, eigvecs = np.linalg.eigh(Wnorm)
+            eigvals, eigvecs = np.linalg.eigh(Wnorm)
 
-            # the leading eigenvectors have the largest eigenvalues, and the
-            # last eigenvector (eigenvalue 1) is the trivial one
-            self.components = eigvecs[:,-2:-2-self.n_components:-1]
+            # the trivial eigenvector is the one with eigenvalue 1
+            trivial = np.argmax(eigvals)
+
+            # order the rest by |lambda| (|l1| >= |l2| >= ...), as in the paper
+            order = [i for i in np.argsort(-np.abs(eigvals)) if i != trivial]
+
+            self.components = eigvecs[:, order[:self.n_components]]
 
         else:
 
@@ -250,7 +258,7 @@ class DIG():
     """
 
     def __init__(self, window, step, n_components=1, 
-                 knn=5, alpha=1.0, tmax=50):
+                 knn=5, alpha=10.0, tmax=50):
 
         self.window = window
         self.step = step
@@ -268,11 +276,11 @@ class DIG():
     
     def _cov_distance(self, X, Y):
 
-        Cx = X.T @ X / (X.shape[0] - 1)
-        Cy = Y.T @ Y / (Y.shape[0] - 1)
-        mu_diff = (np.mean(X, axis=0) - np.mean(Y, axis=0)).reshape(-1,1)
+        Cx = np.cov(X, rowvar=False)
+        Cy = np.cov(Y, rowvar=False)
+        mu_diff = (X.mean(axis=0) - Y.mean(axis=0)).reshape(-1, 1)
 
-        return (mu_diff.T @ np.linalg.pinv(Cx + Cy) @ mu_diff)[0,0]
+        return (mu_diff.T @ np.linalg.pinv(Cx + Cy) @ mu_diff)[0, 0] 
         
     def _cov_distance_matrix(self, X):
 
@@ -290,26 +298,20 @@ class DIG():
     def _adaptive_gaussian_kernel(self, G):
 
         knn = NearestNeighbors(n_neighbors=self.k, metric='precomputed').fit(G)
-        knn_k = knn.kneighbors()[0][:,self.k-1]
-
-        W = np.zeros(G.shape)
-        D = G.shape[0]
-
-        for i in range(D):
-            for j in range(D):
-                if i != j:
-                    # W[i,j] += 0.5*(np.exp(-G[i,j]/knn_k[i])**self.alpha)
-                    # W[i,j] += 0.5*(np.exp(-G[i,j]/knn_k[j])**self.alpha)
-                    W[i,j] += 0.5*np.exp(-(G[i,j]/knn_k[i])**self.alpha)
-                    W[i,j] += 0.5*np.exp(-(G[i,j]/knn_k[j])**self.alpha)
+        knn_k = knn.kneighbors()[0][:, self.k - 1]
+        W = (0.5 * np.exp(-(G / knn_k[:, None]) ** self.alpha)
+             + 0.5 * np.exp(-(G / knn_k[None, :]) ** self.alpha))
+        np.fill_diagonal(W, 0.0)
 
         return W
+
     
     # compute timescale using the von Neumann entropy knee
     def _timescale_vne_knee(self, W):
 
-        eigvals, _ = np.linalg.eig(W)
-        eigvals = eigvals[np.argwhere(eigvals > 0)]
+        d = W.sum(axis=0)
+        eigvals = np.linalg.eigvalsh(W / np.sqrt(np.outer(d, d)))
+        eigvals = eigvals[eigvals > 0]
         vne = []
         eigvals_t = np.copy(eigvals)
         for _ in range(self.tmax):
@@ -322,17 +324,12 @@ class DIG():
         return int(kneedle.elbow) if kneedle.elbow is not None else self.tmax//2
     
     # computation of information distance
-    def _information_distance(self, W):
+    def _information_distance(self, M):
 
-        D = np.zeros(W.shape)
-        d = D.shape[0]
-        for i in range(d):
-            for j in range(d):
-                argument = np.sum(np.sqrt(W[:,i]*W[:,j]))
-                if argument > 1.0: # catch numerical errors
-                    D[i,j] = 0.0
-                else:
-                    D[i,j] = 2 * np.arccos(np.sum(np.sqrt(W[:,i]*W[:,j])))
+        R = np.sqrt(M)
+        D = 2 * np.arccos(np.clip(R.T @ R, -1.0, 1.0))
+        np.fill_diagonal(D, 0.0)
+
         return D
     
     # multidimensional scaling with precomputed distances
@@ -375,7 +372,7 @@ class DIG():
         M = W / W.sum(axis=1)
 
         # timescale via Von Neumann entropy
-        tau = self._timescale_vne_knee(M)
+        tau = self._timescale_vne_knee(W)
 
         # diffusion step
         Mtau = np.linalg.matrix_power(M, tau)

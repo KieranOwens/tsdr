@@ -194,10 +194,6 @@ class PrCA():
         time point Xt+lag.
         Default: 1.
 
-    whiten: bool
-        Whether to whiten the input data.
-        Defaul: True.
-
     model: str
         Specify the predictive model with options 'diff', 'linear_reg', and
         'kernel_ridge'. 'diff' uses naive differencing and is equivalent to
@@ -219,13 +215,11 @@ class PrCA():
         to the input time series X.
     """
 
-    def __init__(self, n_components=1, lag=1, p=1, whiten=True, model='diff', 
-                 **kwargs):
+    def __init__(self, n_components=1, lag=1, p=1, model='diff', **kwargs):
 
         self.n_components = n_components
         self.lag = lag
         self.p = p
-        self.whiten = whiten
         self.model = model
         self.kwargs = kwargs
 
@@ -300,9 +294,8 @@ class PrCA():
         """
 
         # fit a PCA whitening model
-        if self.whiten:
-            pca_white = fit_whitening(X)
-            X = pca_white.transform(X)
+        pca_white = fit_whitening(X)
+        X = pca_white.transform(X)
 
         # whiten the data
         E = self._get_prediction_errors(X)
@@ -311,13 +304,10 @@ class PrCA():
         pca_pred_error = PCA().fit(E)
 
         # get linear transformation
-        if self.whiten:
-            transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
-            transform2 = pca_pred_error.components_.T
-            self.linear_transform_ = (transform1 @ transform2)[:,-1:-(self.n_components+1):-1]
-        else:
-            self.linear_transform_ = (pca_pred_error.components_.T)[:,-1:-(self.n_components+1):-1]
-
+        transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
+        transform2 = pca_pred_error.components_.T
+        self.linear_transform_ = (transform1 @ transform2)[:,-1:-(self.n_components+1):-1]
+        
         return self
 
     def transform(self, X):
