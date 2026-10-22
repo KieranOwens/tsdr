@@ -65,7 +65,8 @@ class LDS():
     random_state: int, RandomState instance or None
         Controls the random initialisation of the output/observation
         matrix C. Pass an int for reproducible results across calls (the
-        global NumPy random state is then left unchanged). If None, the global NumPy random state is used.
+        global NumPy random state is then left unchanged). If None, the
+        global NumPy random state is used.
         Default: None.
 
     """
