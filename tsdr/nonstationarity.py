@@ -86,7 +86,11 @@ class ASSA():
         for i in range(self.n_windows):
             X_window = X[i*(T//self.n_windows):(i+1)*(T//self.n_windows),:]
             mu_i = np.mean(X_window, axis=0)
-            C_i = X_window.T @ X_window /(X_window.shape[0] - 1)
+            # window covariance about the window mean (Hara et al., 2012;
+            # Flumian et al., 2024, Sec. 2), so that the mean enters S only
+            # through the mu_i mu_i^T term
+            Xc = X_window - mu_i
+            C_i = Xc.T @ Xc /(X_window.shape[0] - 1)
             S += (1/self.n_windows) * (np.outer(mu_i, mu_i) + 0.5*(C_i @ C_i))
         
         # subtract 1/2 * identity 
@@ -390,7 +394,10 @@ class SSAsave():
         for i in range(self.n_windows):
             Xi = X[i*(T//self.n_windows):(i+1)*(T//self.n_windows),:]
             Ti = Xi.shape[0]
-            C0i = (1/(Ti - 1)) * Xi.T @ Xi
+            # window covariance about the window mean (Flumian et al., 2024,
+            # Sec. 2), so that Mv reflects changes in variance only
+            Xc = Xi - np.mean(Xi, axis=0)
+            C0i = (1/(Ti - 1)) * Xc.T @ Xc
             G = (np.eye(D) - C0i)
             Mv += (G @ G.T) * (Ti/T)
 
@@ -540,15 +547,21 @@ class SSAcor():
         # data dimensions
         T, D = np.shape(X)
 
-        # time-lagged autocorrelation
-        Ctau = (X[:-self.lag,:].T @ X[self.lag:,:])/(T - 1 - self.lag)
+        # time-lagged autocorrelation (about the global mean, which is zero
+        # for whitened data)
+        Xc = X - np.mean(X, axis=0)
+        Ctau = (Xc[:-self.lag,:].T @ Xc[self.lag:,:])/(T - 1 - self.lag)
 
         # construct matrix Mtau
         Mtau = np.zeros((D, D))
         for i in range(self.n_windows):
             Xi = X[i*(T//self.n_windows):(i+1)*(T//self.n_windows),:]
             Ti = Xi.shape[0]
-            Ctau_i = (1/(Ti - 1 - self.lag)) * Xi[:-self.lag,:].T @ Xi[self.lag:,:]
+            # window autocovariance about the window mean (Flumian et al., 
+            # 2024, Sec. 2), so that Mtau reflects changes in autocovariance 
+            # rather than in mean
+            Xc = Xi - np.mean(Xi, axis=0)
+            Ctau_i = (1/(Ti - 1 - self.lag)) * Xc[:-self.lag,:].T @ Xc[self.lag:,:]
             G = Ctau - Ctau_i
             Mtau += (G @ G.T) * (Ti/T)
 

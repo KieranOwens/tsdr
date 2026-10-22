@@ -6,7 +6,8 @@ import scipy.linalg
 from sklearn.exceptions import ConvergenceWarning
 
 from tsdr._whitening import fit_whitening
-from tsdr.nonstationarity import BSSnonstat, WaSSAf, WaSSAr
+from tsdr.nonstationarity import (ASSA, SSAsave, SSAcor, BSSnonstat,
+                                  WaSSAf, WaSSAr)
 
 from helpers import corr2, random_mix
 from reference import wassa_S_ref, wassar_S_ref
@@ -103,3 +104,30 @@ def test_wassa_window_mean_enters_only_through_mean_term(
     np.testing.assert_allclose(
         np.real(dS), np.outer(mu + shift, mu + shift) - np.outer(mu, mu),
         atol=1e-6)
+
+
+@pytest.mark.parametrize("method, compute", [
+    (ASSA, "_compute_S"), (SSAsave, "_compute_Mv"), (SSAcor, "_compute_Mtau")])
+def test_ssa_window_covariances_are_centred(
+        strongly_nonstationary_data, method, compute):
+    """The window (auto)covariances are computed about the window means
+    (Hara et al., 2012; Flumian et al., 2024, Sec. 2): shifting the mean of
+    one window leaves SSAsave's Mv unchanged and changes ASSA's S only
+    through its m_i m_i^T term, and adding a constant to the series leaves
+    SSAcor's Mtau unchanged."""
+    Xw = strongly_nonstationary_data
+    n = 10
+    L = len(Xw) // n
+    shift = np.array([3.0, -2.0, 0.0, 1.0, 0.5])
+    Xs = Xw.copy()
+    if method is SSAcor:
+        Xs += shift
+    else:
+        Xs[2 * L:3 * L] += shift
+    mu = Xw[2 * L:3 * L].mean(0)
+    model = method(n_windows=n)
+    dM = getattr(model, compute)(Xs) - getattr(model, compute)(Xw)
+    expected = np.zeros_like(dM)
+    if method is ASSA:
+        expected = (np.outer(mu + shift, mu + shift) - np.outer(mu, mu)) / n
+    np.testing.assert_allclose(dM, expected, atol=1e-10)
