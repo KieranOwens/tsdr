@@ -29,8 +29,8 @@ def variance_sources():
 @pytest.mark.parametrize("seed", [0, 1, 2])
 def test_bssnonstat_recovers_all_sources(variance_sources, seed):
     S, X = variance_sources
-    np.random.seed(seed)
-    Y = BSSnonstat(n_components=3, max_iters=30).fit_transform(X)
+    Y = BSSnonstat(n_components=3, max_iters=30,
+                   random_state=seed).fit_transform(X)
     R2 = np.array([[corr2(Y[:, i], S[:, k]) for k in range(5)]
                    for i in range(3)])
     # each component is a different non-stationary source

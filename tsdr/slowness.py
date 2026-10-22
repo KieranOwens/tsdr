@@ -8,6 +8,7 @@
 import numpy as np
 import scipy
 from sklearn.decomposition import PCA
+from sklearn.utils import check_random_state
 
 from ._whitening import fit_whitening
 
@@ -158,6 +159,12 @@ class BioSFA():
     n_components: int
         The dimension (number of variables) of the time-series output.
 
+    random_state: int, RandomState instance or None
+        Controls the random initialisation of the linear transformation
+        weights W. Pass an int for reproducible results across calls (the
+        global NumPy random state is then left unchanged). If None, the global NumPy random state is used.
+        Default: None.
+
     Attributes
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
@@ -165,11 +172,12 @@ class BioSFA():
         applied to the input time series X.
     """
 
-    def __init__(self, n_components=1, n_iters=1000, lr=0.1):
+    def __init__(self, n_components=1, n_iters=1000, lr=0.1, random_state=None):
 
         self.n_components = n_components
         self.n_iters = n_iters
         self.lr = lr
+        self.random_state = random_state
 
     def fit(self, X, y=None):
         """Fit the model to X
@@ -201,7 +209,8 @@ class BioSFA():
         C0_bar = X_bar.T @ X_bar / (T - 1)
             
         # Initialise W and M
-        W = np.random.normal(size=(D, self.n_components))
+        rng = check_random_state(self.random_state)
+        W = rng.normal(size=(D, self.n_components))
         W = W / np.linalg.norm(W, axis=0)
         M = np.eye(self.n_components)
 

@@ -82,3 +82,18 @@ def prca_ref(X, n_components, p=1, lag=1):
     B = np.linalg.lstsq(Z, Y, rcond=None)[0]
     lam, V = np.linalg.eigh(np.cov(Y - Z @ B, rowvar=False))
     return W @ V[:, :n_components], lam
+
+
+def dmd_ref(X):
+    """Exact DMD (Schmid, 2010; Tu et al., 2014, Algorithm 2) without rank
+    truncation, on mean-centred data with snapshots as columns: the reduced
+    operator A~ = U^T X1 V S^-1 from the SVD X0 = U S V^T, its eigenvalues
+    lam, and the exact modes Phi = X1 V S^-1 W / lam, ordered by |lam|."""
+    Xc = (X - X.mean(0)).T
+    X0, X1 = Xc[:, :-1], Xc[:, 1:]
+    U, s, Vh = np.linalg.svd(X0, full_matrices=False)
+    At = U.T @ X1 @ Vh.T / s
+    lam, W = np.linalg.eig(At)
+    Phi = X1 @ Vh.T / s @ W / lam
+    order = np.argsort(-np.abs(lam), kind="stable")
+    return lam[order], Phi[:, order]

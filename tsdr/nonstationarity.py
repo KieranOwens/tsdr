@@ -13,6 +13,7 @@
 import numpy as np
 import scipy
 from sklearn.decomposition import PCA
+from sklearn.utils import check_random_state
 
 from ._whitening import fit_whitening
 
@@ -1028,6 +1029,12 @@ class BSSnonstat():
         The number of iterations used during optimisation.
         Default: 100.
 
+    random_state: int, RandomState instance or None
+        Controls the random initialisation of the projection
+        vectors w. Pass an int for reproducible results across calls (the
+        global NumPy random state is then left unchanged). If None, the global NumPy random state is used.
+        Default: None.
+
     Attributes
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
@@ -1035,11 +1042,12 @@ class BSSnonstat():
         applied to the input time series X.
     """
 
-    def __init__(self, n_components=1, lag=1, max_iters=100):
+    def __init__(self, n_components=1, lag=1, max_iters=100, random_state=None):
 
         self.n_components = n_components
         self.lag = lag
         self.max_iters = max_iters
+        self.random_state = random_state
 
     def fit(self, X, y=None):
         """Fit the model to X
@@ -1075,12 +1083,15 @@ class BSSnonstat():
         # collect projection vectors (as columns)
         W = np.zeros((D, 0))
 
+        # random number generator for initialisation of w
+        rng = check_random_state(self.random_state)
+
         # compute each projection vector
         for _ in range(self.n_components):
 
             # initialise the linear transformation vector, orthogonal to the
             # previous projection vectors
-            w = np.random.normal(size=(D, 1))
+            w = rng.normal(size=(D, 1))
             w = w - W @ (W.T @ w)
             w = w / np.linalg.norm(w)
 

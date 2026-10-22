@@ -7,6 +7,7 @@
 import numpy as np
 from scipy.linalg import pinv
 from sklearn.decomposition import PCA
+from sklearn.utils import check_random_state
 
 from ._whitening import fit_whitening
 
@@ -61,14 +62,22 @@ class LDS():
         the stability of the model parameters.
         Default: True.
 
+    random_state: int, RandomState instance or None
+        Controls the random initialisation of the output/observation
+        matrix C. Pass an int for reproducible results across calls (the
+        global NumPy random state is then left unchanged). If None, the global NumPy random state is used.
+        Default: None.
+
     """
 
-    def __init__(self, n_components=1, max_iter=50, constrain_A_identity=False, whiten=True):
+    def __init__(self, n_components=1, max_iter=50, constrain_A_identity=False, whiten=True,
+                 random_state=None):
 
         self.n_components = n_components
         self.max_iter = max_iter
         self.constrain_A_identity = constrain_A_identity
         self.whiten = whiten
+        self.random_state = random_state
 
     # E-step: Kalman filtering and smoothing
     def _E_step(self, Y, A, Q, C, R, mu0, V0):
@@ -210,7 +219,8 @@ class LDS():
         A = np.eye(d)               # Latent state transition dynamics matrix
         Q = np.eye(d)               # Latent state noise covariance matrix
 
-        C = np.random.randn(D, d)   # Output/Observation matrix
+        rng = check_random_state(self.random_state)
+        C = rng.randn(D, d)         # Output/Observation matrix
         R = np.eye(D) * np.var(Y)   # Output/Observation noise covariance matrix
 
         mu0 = np.zeros(d)           # Initial latent state mean
