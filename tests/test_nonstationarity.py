@@ -3,6 +3,7 @@
 import numpy as np
 import pytest
 import scipy.linalg
+import scipy.stats
 from sklearn.exceptions import ConvergenceWarning
 
 from tsdr._whitening import fit_whitening
@@ -41,6 +42,27 @@ def test_bssnonstat_recovers_all_sources(variance_sources, seed):
     # each component is a different non-stationary source
     assert sorted(R2.argmax(1)) == [0, 1, 2]
     assert np.all(R2.max(1) > 0.99)
+
+
+@pytest.mark.parametrize("seed, random_state", [(0, 2), (2, 4), (3, 9)])
+def test_bssnonstat_random_starts_avoid_local_optima(seed, random_state):
+    """A sinusoid (cross-cumulant -1.5) among nine channels of low-rank 
+    noise. For these data and random states, a single random start converges
+    to a noise direction whose cross-cumulant is nonzero only through 
+    sampling error (a local optimum); with several starts BSSnonstat 
+    recovers the sinusoid."""
+    rng = np.random.default_rng(seed)
+    T, D = 1000, 10
+    z = np.sqrt(2) * np.sin(np.linspace(0, 4 * np.pi, T))
+    A = scipy.stats.ortho_group.rvs(D, random_state=rng)
+    Q = scipy.stats.ortho_group.rvs(D - 1, random_state=rng)
+    noise = rng.normal(size=(T, D - 1)) * np.sqrt(np.r_[np.full(D - 2, 0.1), 0])
+    X = np.column_stack([z, noise @ Q.T]) @ A[:, :D - 1]
+    single = BSSnonstat(max_iters=10, n_init=1,
+                        random_state=random_state).fit_transform(X)
+    multiple = BSSnonstat(max_iters=10, random_state=random_state).fit_transform(X)
+    assert corr2(single, z) < 0.1
+    assert corr2(multiple, z) > 0.99
 
 
 @pytest.fixture(scope="module")

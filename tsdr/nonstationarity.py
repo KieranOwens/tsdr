@@ -1057,10 +1057,17 @@ class BSSnonstat():
 
     The steps involved in BSSnonstat are: (1) whiten the data, 
     (2) initialise a unit norm projection vector w, (3) iteratively optimise
-    w using a fixed point algorithm, (4) repeat the optimisation to find 
-    further projection vectors, orthogonalising each w against the previous 
-    ones after every update (deflationary orthogonalisation), and (5) apply 
-    the transformation vectors to the whitened data.
+    w using a fixed point algorithm, from n_init random initialisations, 
+    keeping the w whose cross-cumulant cum(y_t^2, y_{t-lag}^2) of the 
+    projection y = w^T z has the largest magnitude, (4) repeat the 
+    optimisation to find further projection vectors, orthogonalising each w 
+    against the previous ones after every update (deflationary 
+    orthogonalisation), and (5) apply the transformation vectors to the 
+    whitened data.
+
+    The fixed point algorithm can converge to local optima, e.g., stationary
+    noise directions with a small cross-cumulant in a finite sample, so 
+    several random initialisations are used.
 
     Reference: Hyvarinen (2001) Blind source separation by nonstationarity
     of variance, IEEE Trans. on NN
@@ -1079,6 +1086,11 @@ class BSSnonstat():
         The number of iterations used during optimisation.
         Default: 100.
 
+    n_init: int
+        The number of random initialisations of each projection vector, of 
+        which the one with the largest cross-cumulant magnitude is kept.
+        Default: 5.
+
     random_state: int, RandomState instance or None
         Controls the random initialisation of the projection
         vectors w. Pass an int for reproducible results across calls (the
@@ -1093,12 +1105,14 @@ class BSSnonstat():
         applied to the input time series X.
     """
 
-    def __init__(self, n_components=1, lag=1, max_iters=100, random_state=None):
+    def __init__(self, n_components=1, lag=1, max_iters=100, random_state=None,
+                 n_init=5):
 
         self.n_components = n_components
         self.lag = lag
         self.max_iters = max_iters
         self.random_state = random_state
+        self.n_init = n_init
 
     def fit(self, X, y=None):
         """Fit the model to X
@@ -1140,31 +1154,46 @@ class BSSnonstat():
         # compute each projection vector
         for _ in range(self.n_components):
 
-            # initialise the linear transformation vector, orthogonal to the
-            # previous projection vectors
-            w = rng.normal(size=(D, 1))
-            w = w - W @ (W.T @ w)
-            w = w / np.linalg.norm(w)
+            # fixed point iteration from n_init random initialisations, 
+            # keeping the projection vector with the largest cross-cumulant 
+            # magnitude (the iteration can converge to local optima)
+            best_w, best_cum = None, -np.inf
+            for _ in range(self.n_init):
 
-            # Hyvarinen (2001) equation (7)
-            for _ in range(self.max_iters):
-
-                # E{z_t (w^T z_t) (w^T z_t-lag)^2} and
-                # E{z_t-lag (w^T z_t-lag) (w^T z_t)^2}
-                y0 = X0 @ w
-                ylag = Xlag @ w
-                e1 = X0.T @ (y0 * ylag**2) / T
-                e2 = Xlag.T @ (ylag * y0**2) / T
-
-                w = e1 + e2 - 2*w - M @ w @ (w.T @ M @ w)
-
-                # deflationary orthogonalisation (Gram-Schmidt) against the 
-                # previous projection vectors, Hyvarinen (2001) Sec. III
+                # initialise the linear transformation vector, orthogonal to
+                # the previous projection vectors
+                w = rng.normal(size=(D, 1))
                 w = w - W @ (W.T @ w)
                 w = w / np.linalg.norm(w)
 
+                # Hyvarinen (2001) equation (7)
+                for _ in range(self.max_iters):
+
+                    # E{z_t (w^T z_t) (w^T z_t-lag)^2} and
+                    # E{z_t-lag (w^T z_t-lag) (w^T z_t)^2}
+                    y0 = X0 @ w
+                    ylag = Xlag @ w
+                    e1 = X0.T @ (y0 * ylag**2) / T
+                    e2 = Xlag.T @ (ylag * y0**2) / T
+
+                    w = e1 + e2 - 2*w - M @ w @ (w.T @ M @ w)
+
+                    # deflationary orthogonalisation (Gram-Schmidt) against 
+                    # the previous projection vectors, Hyvarinen (2001) Sec. III
+                    w = w - W @ (W.T @ w)
+                    w = w / np.linalg.norm(w)
+
+                # cross-cumulant cum(y_t^2, y_t-lag^2), Hyvarinen (2001) 
+                # equation (4)
+                y0 = X0 @ w
+                ylag = Xlag @ w
+                cum = (np.mean(y0**2 * ylag**2) - np.mean(y0**2) * np.mean(ylag**2)
+                       - 2 * np.mean(y0 * ylag)**2)
+                if abs(cum) > best_cum:
+                    best_w, best_cum = w, abs(cum)
+
             # collect projection vectors
-            W = np.concatenate([W, w], axis=1)
+            W = np.concatenate([W, best_w], axis=1)
 
         # get linear transformation
         transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
