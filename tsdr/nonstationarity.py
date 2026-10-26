@@ -14,7 +14,6 @@ import warnings
 
 import numpy as np
 import scipy
-from sklearn.decomposition import PCA
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.utils import check_random_state
 

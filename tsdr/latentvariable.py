@@ -10,7 +10,6 @@ import warnings
 import numpy as np
 import scipy.linalg
 from scipy.linalg import pinv
-from sklearn.decomposition import PCA
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.utils import check_random_state
 
@@ -189,7 +188,6 @@ class LDS():
 
         # Update the latent state noise covariance matrix Q, Eq. (20)
         # and enforce symmetry
-        #Q = (sum_Exx1 - A @ sum_Exxm1.T) / (T - 1)
         Q = (sum_Exx1 - A @ sum_Exxm1.T - sum_Exxm1 @ A.T + A @ sum_Exx0 @ A.T) / (T - 1)
         Q = (Q + Q.T) / 2  
 

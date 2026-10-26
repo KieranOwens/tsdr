@@ -7,7 +7,6 @@
 
 import numpy as np
 from scipy.linalg import eig
-from sklearn.decomposition import PCA
 
 from ._validation import check_input, check_n_components
 from ._whitening import fit_whitening

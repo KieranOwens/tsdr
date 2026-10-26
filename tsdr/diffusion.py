@@ -11,7 +11,6 @@ import scipy.linalg
 import scipy.spatial.distance
 from kneed import KneeLocator
 from sklearn.neighbors import NearestNeighbors
-from sklearn.manifold import MDS
 
 from ._validation import check_input, check_n_components, check_window
 from ._whitening import fit_whitening
@@ -171,8 +170,6 @@ class DMcov():
 
         # Gaussian kernel weights matrix
         W = np.exp(-W**2/self.sigma)
-        # for i in range(W.shape[0]):
-        #     W[i,i] = 0.0
 
         # diagonal weights matrix
         D = np.diag(np.sum(W, axis=0))
@@ -297,13 +294,6 @@ class DIG():
         self.alpha = alpha
         self.tmax = tmax
 
-    def _spd_geodesic(self, A, B):
-
-        A_neg_root = np.linalg.pinv(scipy.linalg.sqrtm(A))
-        log_term = scipy.linalg.logm(A_neg_root @ B @ A_neg_root)
-
-        return np.linalg.norm(log_term)
-    
     def _cov_distance(self, X, Y):
 
         Cx = np.cov(X, rowvar=False)

@@ -13,7 +13,6 @@ import numbers
 import warnings
 
 import numpy as np
-from sklearn.decomposition import PCA
 from sklearn.exceptions import ConvergenceWarning
 import pywt
 
