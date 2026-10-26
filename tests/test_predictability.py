@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 import scipy.stats
 from sklearn.decomposition import PCA
+from sklearn.exceptions import ConvergenceWarning
 
 from tsdr.predictability import TLPC, PrCA, DiCCA, ForeCA, PFA, PTS, DCA
 
@@ -364,6 +365,29 @@ def test_pts_alternating_steps_decrease_prediction_error(three_ar_sources):
         w = model._update_w(Xw, Wk, A)
         errors.append(model._fit_var(Xw, np.column_stack([Wk, w]))[1])
     assert np.all(np.diff(errors) <= 1e-12)
+
+
+def test_pts_keeps_previous_w_if_prediction_error_increases(three_ar_sources):
+    """If an update of w increases the prediction error, PTS keeps the
+    previous w (and stops), rather than the worse one."""
+    _, X = three_ar_sources
+
+    class PTSWithBadSecondUpdate(PTS):
+        # the second update of w returns a fixed (worse) direction
+        calls = 0
+        def _update_w(self, Z, Wk, A):
+            self.calls += 1
+            if self.calls == 2:
+                self.bad_w = np.ones(Z.shape[1]) / np.sqrt(Z.shape[1])
+                return self.bad_w
+            return super()._update_w(Z, Wk, A)
+
+    model = PTSWithBadSecondUpdate(n_components=1, M=2).fit(X)
+    with pytest.warns(ConvergenceWarning):
+        one_step = PTS(n_components=1, M=2, max_iters=1).fit(X)
+    np.testing.assert_allclose(model.linear_transform_, one_step.linear_transform_)
+    np.testing.assert_allclose(model.prediction_errors_, one_step.prediction_errors_)
+    assert model.calls == 2
 
 
 def test_dca_gradient(three_ar_sources):

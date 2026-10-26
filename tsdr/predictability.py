@@ -1082,7 +1082,8 @@ class PTS():
 
     tol: float
         The iteration for each component stops when the decrease in the 
-        prediction error falls below tol.
+        prediction error falls below tol, or when the prediction error 
+        increases (in which case the previous w is kept).
         Default: 1e-8.
 
     Attributes
@@ -1230,10 +1231,19 @@ class PTS():
                 A, _ = self._fit_var(Z, np.column_stack([W, w]))
 
                 # (b) w with A fixed
-                w = self._update_w(Z, W, A)
+                w_new = self._update_w(Z, W, A)
 
                 # prediction error of the VAR model refitted with the new w
-                A, error_new = self._fit_var(Z, np.column_stack([W, w]))
+                A_new, error_new = self._fit_var(Z, np.column_stack([W, w_new]))
+
+                # if the prediction error increased (e.g., through rounding
+                # near the optimum), keep the previous w and its VAR fit
+                if error_new > error:
+                    error_new = error
+                    converged = True
+                    break
+
+                w, A = w_new, A_new
                 if error - error_new < self.tol:
                     converged = True
                     break
