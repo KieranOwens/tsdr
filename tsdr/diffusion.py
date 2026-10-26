@@ -11,8 +11,8 @@ import scipy.linalg
 import scipy.spatial.distance
 from kneed import KneeLocator
 from sklearn.neighbors import NearestNeighbors
-from sklearn.manifold import MDS
 
+from ._validation import check_input, check_n_components, check_window
 from ._whitening import fit_whitening
 
 
@@ -142,6 +142,26 @@ class DMcov():
             Returns self.
         """
 
+        X = check_input(X)
+        T, D = X.shape
+
+        if self.distance not in ('mahalanobis', 'frobenius', 'geodesic'):
+            raise ValueError(f"Unknown distance '{self.distance}'. Options are "
+                             "'mahalanobis', 'frobenius', and 'geodesic'.")
+
+        # windows of at least 2 samples for the window covariances, and of 
+        # at least D + 1 samples for the geodesic distance, which needs 
+        # positive definite (nonsingular) window covariances
+        if self.distance == 'geodesic':
+            check_window(self.window, self.step, T, min_length=D + 1)
+        else:
+            check_window(self.window, self.step, T, min_length=2)
+
+        # the components are the nontrivial eigenvectors of the 
+        # n_windows x n_windows kernel matrix
+        n_windows = (T - self.window) // self.step + 1
+        check_n_components(self.n_components, max_components=n_windows - 1)
+
         # mean centering
         X = X - np.mean(X, axis=0)
 
@@ -150,8 +170,6 @@ class DMcov():
 
         # Gaussian kernel weights matrix
         W = np.exp(-W**2/self.sigma)
-        # for i in range(W.shape[0]):
-        #     W[i,i] = 0.0
 
         # diagonal weights matrix
         D = np.diag(np.sum(W, axis=0))
@@ -205,6 +223,8 @@ class DMcov():
             n_windows = (n_samples - window) // step + 1).
         """
 
+        X = check_input(X)
+
         self.fit(X)
         
         return self.components
@@ -226,7 +246,7 @@ class DIG():
     The steps involved in DIG are: (1) compute a square matrix of covariance
     distances between time-series segments, (2) apply an adaptive Gaussian 
     (i.e., RBF) kernel to the distance matrix to obtain W, (3) normalise the 
-    rows of M to yield a Markovian matrix of transition probabilities, 
+    columns of W to yield a Markovian matrix M of transition probabilities, 
     (4) compute a time scale tau using von Neumann Entropy (VNE), (5) compute 
     the tau-step diffusion probabilities M^tau, (6) compute information 
     distances D for M^tau, and (7) apply multidimensional scaling (MDS) to D.
@@ -274,13 +294,6 @@ class DIG():
         self.alpha = alpha
         self.tmax = tmax
 
-    def _spd_geodesic(self, A, B):
-
-        A_neg_root = np.linalg.pinv(scipy.linalg.sqrtm(A))
-        log_term = scipy.linalg.logm(A_neg_root @ B @ A_neg_root)
-
-        return np.linalg.norm(log_term)
-    
     def _cov_distance(self, X, Y):
 
         Cx = np.cov(X, rowvar=False)
@@ -370,13 +383,27 @@ class DIG():
             Returns self.
         """
 
-        # copute covariance distances
+        X = check_input(X)
+        T, _ = X.shape
+
+        # windows of at least 2 samples for the window covariances
+        check_window(self.window, self.step, T, min_length=2)
+
+        # multidimensional scaling of the n_windows x n_windows information
+        # distances gives at most n_windows components
+        n_windows = (T - self.window) // self.step + 1
+        check_n_components(self.n_components, max_components=n_windows)
+
+        # compute covariance distances
         W = self._cov_distance_matrix(X)
 
         # Gaussian kernel weights matrix
         W = self._adaptive_gaussian_kernel(W)
 
-        # normalise rows
+        # normalise the columns: since W is symmetric, W.sum(axis=1) are also
+        # the column sums, so each column of M sums to one (column j holds 
+        # the transition probabilities from window j, as compared by 
+        # _information_distance)
         M = W / W.sum(axis=1)
 
         # timescale via Von Neumann entropy
@@ -410,6 +437,8 @@ class DIG():
             row per window (starting at samples 0, step, 2*step, ..., so 
             n_windows = (n_samples - window) // step + 1).
         """
+
+        X = check_input(X)
 
         self.fit(X)
         
@@ -528,6 +557,14 @@ class NLSA():
             Returns self.
         """
 
+        X = check_input(X)
+        _, D = X.shape
+
+        # the temporal modes are the right singular vectors of the 
+        # (q * D) x n_eigenfunctions linear operator A
+        check_n_components(self.n_components, 
+                           max_components=min(self.q * D, self.n_eigenfunctions))
+
         if self.whiten:
 
             # whiten the data
@@ -605,6 +642,8 @@ class NLSA():
             A (possibly multivariate) time series of temporal modes, for time 
             points q, ..., n_samples - 1.
         """
+
+        X = check_input(X)
 
         self.fit(X)
         

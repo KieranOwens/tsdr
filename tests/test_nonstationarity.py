@@ -153,3 +153,34 @@ def test_ssa_window_covariances_are_centred(
     if method is ASSA:
         expected = (np.outer(mu + shift, mu + shift) - np.outer(mu, mu)) / n
     np.testing.assert_allclose(dM, expected, atol=1e-10)
+
+
+@pytest.mark.parametrize("nonstationary", [True, False])
+def test_assa_eigvals_in_component_order(variance_sources, nonstationary):
+    """eigvals_ lists the eigenvalues of S in the order of the components:
+    S restricted to the components (centred, since transform does not 
+    centre) is diagonal with these eigenvalues."""
+    _, X = variance_sources
+    D = X.shape[1]
+    model = ASSA(n_components=D, nonstationary=nonstationary).fit(X)
+    Y = model.transform(X)
+    S_components = model._compute_S(Y - Y.mean(axis=0))
+    lam = np.diag(S_components)
+    np.testing.assert_allclose(S_components, np.diag(lam), atol=1e-8)
+    if nonstationary:
+        # most nonstationary (largest eigenvalue) first
+        assert np.all(np.diff(lam) < 0)
+        np.testing.assert_allclose(model.eigvals_, 1 - lam / lam.max(), atol=1e-8)
+    else:
+        # most stationary (least eigenvalue) first
+        assert np.all(np.diff(lam) > 0)
+        np.testing.assert_allclose(model.eigvals_, lam, atol=1e-8)
+
+
+def test_assa_truthy_nonstationary_sets_eigvals(variance_sources):
+    """A truthy value other than True (e.g., 1) behaves like True."""
+    _, X = variance_sources
+    a = ASSA(n_components=2, nonstationary=1).fit(X)
+    b = ASSA(n_components=2, nonstationary=True).fit(X)
+    np.testing.assert_array_equal(a.eigvals_, b.eigvals_)
+    np.testing.assert_array_equal(a.linear_transform_, b.linear_transform_)

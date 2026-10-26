@@ -5,12 +5,15 @@
 # LDS - Latent linear dynamical system
 # DFA - Dynamic Factor Analysis
 
+import warnings
+
 import numpy as np
 import scipy.linalg
 from scipy.linalg import pinv
-from sklearn.decomposition import PCA
+from sklearn.exceptions import ConvergenceWarning
 from sklearn.utils import check_random_state
 
+from ._validation import check_input, check_n_components
 from ._whitening import fit_whitening
 
 ###############################################################################
@@ -29,7 +32,7 @@ class LDS():
     according to a linear transition model and the observations are
     generated from the latent state through a linear observation model.
 
-    This implementaiton is based on the Expectation-Maximization (EM)
+    This implementation is based on the Expectation-Maximization (EM)
     algorithm for fitting the parameters of the linear dynamical system.
     This involves iteratively estimating the latent state and its
     covariance using the Kalman filter, and then updating the model
@@ -47,8 +50,15 @@ class LDS():
         Default: 1.
 
     max_iter: int
-        The maximum number of iterations for the EM algorithm.
+        The number of iterations of the EM algorithm (EM always runs for 
+        max_iter iterations).
         Default: 50.
+
+    tol: float
+        A ConvergenceWarning is raised if the relative change in the 
+        output/observation matrix C in the last EM iteration, 
+        ||C_new - C|| / ||C||, exceeds tol. It does not affect the result.
+        Default: 1e-3.
 
     constrain_A_identity: bool
         If True, the latent state transition dynamics matrix A is constrained
@@ -83,10 +93,11 @@ class LDS():
     """
 
     def __init__(self, n_components=1, max_iter=50, constrain_A_identity=False, whiten=True,
-                 random_state=None, init='autocorrelation'):
+                 random_state=None, init='autocorrelation', tol=1e-3):
 
         self.n_components = n_components
         self.max_iter = max_iter
+        self.tol = tol
         self.constrain_A_identity = constrain_A_identity
         self.whiten = whiten
         self.random_state = random_state
@@ -128,7 +139,7 @@ class LDS():
 
         # ----- Kalman smoothing -----
         x_smooth = np.zeros((T, d))     # smoothed mean, x_t^T
-        V_smooth = np.zeros((T, d, d))  # smothed covariance, V_t^T
+        V_smooth = np.zeros((T, d, d))  # smoothed covariance, V_t^T
         Cov = np.zeros((T - 1, d, d))   # V_{t, t-1}^T
 
         # initialise the smoothed estimates
@@ -177,7 +188,6 @@ class LDS():
 
         # Update the latent state noise covariance matrix Q, Eq. (20)
         # and enforce symmetry
-        #Q = (sum_Exx1 - A @ sum_Exxm1.T) / (T - 1)
         Q = (sum_Exx1 - A @ sum_Exxm1.T - sum_Exxm1 @ A.T + A @ sum_Exx0 @ A.T) / (T - 1)
         Q = (Q + Q.T) / 2  
 
@@ -214,6 +224,8 @@ class LDS():
             Returns self.
         """
 
+        X = check_input(X)
+
         # new variable for the input time series to maintain 
         # the naming conventions in the Ghahramani and Hinton paper
         Y = X.copy()
@@ -221,6 +233,14 @@ class LDS():
         # Input time-series dimensions
         _, D = Y.shape
         d = self.n_components
+
+        # the autocorrelation initialisation of C needs d <= D directions of 
+        # the data, whereas a random initialisation allows a latent state of
+        # any dimension (e.g., d = 2 for an oscillation in univariate data)
+        if self.init == 'autocorrelation':
+            check_n_components(d, max_components=D)
+        else:
+            check_n_components(d, max_components=np.inf)
 
         if self.whiten:
             # fit a PCA whitening model
@@ -262,11 +282,22 @@ class LDS():
         V0 = np.eye(d)              # Initial latent state covariance matrix
 
         # EM iterations
+        change = np.inf
         for _ in range(self.max_iter):
+            C_previous = C
             # E step
             Ex, Exx, Exxm1 = self._E_step(Y, A, Q, C, R, mu0, V0)
             # M step
             A, Q, C, R, mu0, V0 = self._M_step(Y, Ex, Exx, Exxm1)
+            # relative change in C in this iteration
+            change = np.linalg.norm(C - C_previous) / np.linalg.norm(C_previous)
+
+        if change > self.tol:
+            warnings.warn(f"{type(self).__name__} may not have converged in "
+                          f"max_iter={self.max_iter} EM iterations (relative "
+                          f"change in C in the last iteration {change:.2e} > "
+                          f"tol={self.tol}); consider increasing max_iter.",
+                          ConvergenceWarning)
 
         # Latent linear dynamical system parameters
         self.A = A
@@ -291,6 +322,8 @@ class LDS():
         X_new: ndarray, shape (n_samples, n_components)
             A (possibly multivariate) time series of components.
         """
+
+        X = check_input(X)
         # Whiten the input data if required
         if self.whiten:
 
@@ -318,6 +351,8 @@ class LDS():
         X_new: ndarray, shape (n_samples, n_components)
             A (possibly multivariate) time series of components.
         """
+
+        X = check_input(X)
 
         self.fit(X)
         
@@ -360,8 +395,15 @@ class DFA(LDS):
         Default: 1.
 
     max_iter: int
-        The maximum number of iterations for the EM algorithm.
+        The number of iterations of the EM algorithm (EM always runs for 
+        max_iter iterations).
         Default: 50.
+
+    tol: float
+        A ConvergenceWarning is raised if the relative change in the 
+        output/observation matrix C in the last EM iteration exceeds tol 
+        (see LDS). It does not affect the result.
+        Default: 1e-3.
 
     whiten: bool
         If True, the input time series is whitened before fitting the model.
@@ -382,9 +424,9 @@ class DFA(LDS):
     """
 
     def __init__(self, n_components=1, max_iter=50, whiten=True, 
-                 random_state=None, init='autocorrelation'):
+                 random_state=None, init='autocorrelation', tol=1e-3):
 
         # an LDS with the transition matrix constrained to the identity
         super().__init__(n_components=n_components, max_iter=max_iter, 
                          constrain_A_identity=True, whiten=whiten, 
-                         random_state=random_state, init=init)
+                         random_state=random_state, init=init, tol=tol)

@@ -7,8 +7,8 @@
 
 import numpy as np
 from scipy.linalg import eig
-from sklearn.decomposition import PCA
 
+from ._validation import check_input, check_n_components
 from ._whitening import fit_whitening
 
 ###############################################################################
@@ -22,7 +22,7 @@ class DyCA():
     Dynamical Component Analysis (DyCA).
 
     DyCA is a TSDR method for extracting the most deterministic components from 
-    a multivariate time seriese (i.e., that can be represented as trajectories 
+    a multivariate time series (i.e., that can be represented as trajectories 
     of a linear ordinary differential equation).
 
     The steps involved in DyCA are: (1) compute the temporal derivative of the 
@@ -83,8 +83,14 @@ class DyCA():
             Returns self.
         """
 
+        X = check_input(X)
+
         # data dimensions
-        T, _ = X.shape
+        T, D = X.shape
+
+        # the linear transformation has two columns (eigenvector and C3 @
+        # eigenvector) for each selected eigenvalue, so up to 2 * D columns
+        check_n_components(self.n_components, max_components=2 * D)
 
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
@@ -142,6 +148,8 @@ class DyCA():
             (linear ODE) determinism.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -161,6 +169,8 @@ class DyCA():
             A (possibly multivariate) time series of components ordered by 
             (linear ODE) determinism.
         """
+
+        X = check_input(X)
 
         self.fit(X)
         
@@ -278,6 +288,8 @@ class DMD():
             Returns self.
         """
 
+        X = check_input(X, self.n_components)
+
         if self.whiten:
 
             # fit a PCA whitening model
@@ -373,6 +385,8 @@ class DMD():
             the modulus of their DMD eigenvalue.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -392,6 +406,8 @@ class DMD():
             A (possibly multivariate) time series of components ordered by
             the modulus of their DMD eigenvalue.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
 

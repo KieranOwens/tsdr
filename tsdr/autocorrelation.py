@@ -13,10 +13,10 @@ import numbers
 import warnings
 
 import numpy as np
-from sklearn.decomposition import PCA
 from sklearn.exceptions import ConvergenceWarning
 import pywt
 
+from ._validation import check_input
 from ._whitening import fit_whitening
 
 ###############################################################################
@@ -80,6 +80,8 @@ class TICA():
             Returns self.
         """
 
+        X = check_input(X, self.n_components)
+
         # data dimensions
         T, _ = X.shape
 
@@ -120,6 +122,8 @@ class TICA():
             autocorrelation.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -139,6 +143,8 @@ class TICA():
             A (possibly multivariate) time series of components ordered by 
             autocorrelation.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         
@@ -205,6 +211,8 @@ class TMCA():
             Returns self.
         """
 
+        X = check_input(X, self.n_components)
+
         # data dimensions
         T, _ = X.shape
 
@@ -242,6 +250,8 @@ class TMCA():
             autocorrelation.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -261,6 +271,8 @@ class TMCA():
             A (possibly multivariate) time series of components ordered by 
             autocorrelation.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         
@@ -384,6 +396,8 @@ class TCCA_Stiefel:
             Returns self.
         """
 
+        X = check_input(X, self.n_components)
+
         # data shape
         T, D = X.shape
 
@@ -457,6 +471,8 @@ class TCCA_Stiefel:
             autocorrelation.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -476,6 +492,8 @@ class TCCA_Stiefel:
             A (possibly multivariate) time series of components ordered by 
             autocorrelation.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         
@@ -501,7 +519,7 @@ class CSA():
     corresponding to the largest eigenvalues, and (5) apply the eigenvector 
     linear transformation to the whitened data.
 
-    Reference: Theis (2010) Colored subspace analysis: dimenion reduction
+    Reference: Theis (2010) Colored subspace analysis: dimension reduction
     based on a signal's autocorrelation structure, IEEE Transactions on 
     Circuits and Systems.
 
@@ -518,8 +536,16 @@ class CSA():
         Default: 2.
 
     max_iters: int
-        The number of iterations of the joint low-rank approximation.
+        The number of iterations of the joint low-rank approximation (the 
+        algorithm always runs for max_iters iterations).
         Default: 1000.
+
+    tol: float
+        A ConvergenceWarning is raised if the change in the subspace spanned
+        by the components in the last iteration, ||W W^T - W_old W_old^T|| 
+        for the orthonormal matrix W, exceeds tol. It does not affect the 
+        result.
+        Default: 1e-6.
 
     Attributes
     ----------
@@ -528,11 +554,12 @@ class CSA():
         to the input time series X.
     """
 
-    def __init__(self, n_components=1, lag=2, max_iters=1000):
+    def __init__(self, n_components=1, lag=2, max_iters=1000, tol=1e-6):
 
         self.n_components = n_components
         self.lag = lag
         self.max_iters = max_iters
+        self.tol = tol
 
     def _get_lags(self):
         """The list of lags: 1, ..., lag for an integer lag (including NumPy 
@@ -573,6 +600,8 @@ class CSA():
             Returns self.
         """
 
+        X = check_input(X, self.n_components)
+
         # data dimensions
         T, _ = X.shape
 
@@ -602,7 +631,9 @@ class CSA():
         W = eigvecs[:,-1:-self.n_components-1:-1]
 
         # iteratively approximate W
+        change = np.inf
         for _ in range(self.max_iters):
+            W_previous = W
             C = Ctensor[0]
             if self.n_components==1:
                 outer = np.outer(W, W).T
@@ -613,6 +644,15 @@ class CSA():
                 R += C @ outer @ C.T + C.T @ outer @ C
             _, eigvecs = np.linalg.eigh(R)
             W = eigvecs[:,-1:-self.n_components-1:-1]
+            # change in the subspace spanned by W (whatever the signs of its
+            # columns) in this iteration
+            change = np.linalg.norm(W @ W.T - W_previous @ W_previous.T)
+
+        if change > self.tol:
+            warnings.warn(f"CSA may not have converged in max_iters="
+                          f"{self.max_iters} iterations (change in the subspace "
+                          f"in the last iteration {change:.2e} > tol={self.tol}); "
+                          "consider increasing max_iters.", ConvergenceWarning)
 
         # get linear transformation
         transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
@@ -635,6 +675,8 @@ class CSA():
             autocorrelation.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -654,6 +696,8 @@ class CSA():
             A (possibly multivariate) time series of components ordered by 
             autocorrelation.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         
@@ -709,7 +753,10 @@ class sPCA_dwt():
         Default: True
 
     method: str
-        Whether to use PCA or SVD. Options: 'pca' or 'svd'.
+        Whether to use PCA or SVD. Options: 'pca' or 'svd'. Note: the two 
+        options currently give the same result, since the component scores 
+        are always computed by SVD of the centred coefficients (which equals
+        PCA up to the signs of the components).
         Default: 'pca'.
     """
 
@@ -736,6 +783,8 @@ class sPCA_dwt():
         self : object
             Returns self.
         """
+
+        X = check_input(X, self.n_components)
 
         # data length
         T = X.shape[0]
@@ -791,6 +840,8 @@ class sPCA_dwt():
             A (possibly multivariate) time series of components ordered by 
             variance they explain in the low-pass DWT coefficients.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         

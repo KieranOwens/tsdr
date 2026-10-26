@@ -14,10 +14,10 @@ import warnings
 
 import numpy as np
 import scipy
-from sklearn.decomposition import PCA
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.utils import check_random_state
 
+from ._validation import check_input, check_lag, check_n_windows
 from ._whitening import fit_whitening
 
 ###############################################################################
@@ -65,8 +65,12 @@ class ASSA():
         The linear transformation that yields the ASSA components when applied 
         to the input time series X.
 
-    eigvals_: ndarray, shape (n_features)
-        The singular/eigen-values of the eigendecomposition step.
+    eigvals_: ndarray, shape (n_features,)
+        The eigenvalues lambda of S, in the same order as the components 
+        (of which the first n_components are returned): for 
+        nonstationary=True, 1 - lambda / max(lambda), which increases from 0 
+        for the most nonstationary component; for nonstationary=False, 
+        lambda, in ascending order (most stationary component first).
     """
 
     def __init__(self, n_components=1, n_windows=10, nonstationary=True):
@@ -118,11 +122,16 @@ class ASSA():
             Returns self.
         """
 
+        X = check_input(X, self.n_components)
+
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
         # whiten the data
         Xw = pca_white.transform(X)
+
+        # windows of at least 2 samples for the window covariances
+        check_n_windows(self.n_windows, X.shape[0], min_length=2)
 
         # get matrix S
         S = self._compute_S(Xw)
@@ -131,11 +140,13 @@ class ASSA():
         eigvals, eigvecs = np.linalg.eigh(S)
         eigvecs_sorted = eigvecs[:,np.argsort(eigvals)]
 
-        # eigenvalues
-        if self.nonstationary == True:
-            self.eigvals_ = 1 - eigvals[np.argsort(eigvals)]/np.max(eigvals)
-        elif self.nonstationary == False:
-            self.eigvals_ = eigvals[np.argsort(eigvals)][::-1]
+        # eigenvalues, in the same order as the components (descending for 
+        # nonstationary components, ascending for stationary components)
+        eigvals_sorted = eigvals[np.argsort(eigvals)]
+        if self.nonstationary:
+            self.eigvals_ = 1 - eigvals_sorted[::-1]/np.max(eigvals)
+        else:
+            self.eigvals_ = eigvals_sorted
 
         # get linear transformation
         transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
@@ -162,6 +173,8 @@ class ASSA():
             either non-stationarity or stationarity.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -181,6 +194,8 @@ class ASSA():
             A (possibly multivariate) time series of components ordered by 
             either non-stationarity or stationarity.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         
@@ -269,16 +284,21 @@ class SSAsir():
             Returns self.
         """
 
+        X = check_input(X, self.n_components)
+
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
         # whiten the data
         Xw = pca_white.transform(X)
 
-        # get matrix S
+        # windows of at least 1 sample for the window means
+        check_n_windows(self.n_windows, X.shape[0], min_length=1)
+
+        # get matrix Mm
         Mm = self._compute_Mm(Xw)
 
-        # eigendecomposition of S
+        # eigendecomposition of Mm
         eigvals, eigvecs = np.linalg.eigh(Mm)
         eigvecs_sorted = eigvecs[:,np.argsort(eigvals)]
 
@@ -307,6 +327,8 @@ class SSAsir():
             either non-stationarity or stationarity.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -326,6 +348,8 @@ class SSAsir():
             A (possibly multivariate) time series of components ordered by 
             either non-stationarity or stationarity.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         
@@ -420,16 +444,21 @@ class SSAsave():
             Returns self.
         """
 
+        X = check_input(X, self.n_components)
+
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
         # whiten the data
         Xw = pca_white.transform(X)
 
-        # get matrix S
+        # windows of at least 2 samples for the window covariances
+        check_n_windows(self.n_windows, X.shape[0], min_length=2)
+
+        # get matrix Mv
         Mv = self._compute_Mv(Xw)
 
-        # eigendecomposition of S
+        # eigendecomposition of Mv
         eigvals, eigvecs = np.linalg.eigh(Mv)
         eigvecs_sorted = eigvecs[:,np.argsort(eigvals)]
 
@@ -458,6 +487,8 @@ class SSAsave():
             either non-stationarity or stationarity.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -478,6 +509,8 @@ class SSAsave():
             either non-stationarity or stationarity.
         """
 
+        X = check_input(X, self.n_components)
+
         self.fit(X)
         
         return self.transform(X)
@@ -492,7 +525,7 @@ class SSAcor():
     """
     Stationary Subspace Analysis using time-lagged autocorrelation (SSAcor) 
 
-    SSAcoris a TSDR method for extracting the most nonstationary (or 
+    SSAcor is a TSDR method for extracting the most nonstationary (or 
     stationary) components from a multivariate time series (i.e., for which 
     variation in the time-lagged autocorrelation across time series segments is 
     maximised or minimised).
@@ -584,16 +617,22 @@ class SSAcor():
             Returns self.
         """
 
+        X = check_input(X, self.n_components)
+
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
         # whiten the data
         Xw = pca_white.transform(X)
 
-        # get matrix S
+        # windows of at least lag + 2 samples for the window autocovariances
+        check_lag(self.lag, X.shape[0])
+        check_n_windows(self.n_windows, X.shape[0], min_length=self.lag + 2)
+
+        # get matrix Mtau
         Mtau = self._compute_Mtau(Xw)
 
-        # eigendecomposition of S
+        # eigendecomposition of Mtau
         eigvals, eigvecs = np.linalg.eigh(Mtau)
         eigvecs_sorted = eigvecs[:,np.argsort(eigvals)]
 
@@ -622,6 +661,8 @@ class SSAcor():
             either non-stationarity or stationarity.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -641,6 +682,8 @@ class SSAcor():
             A (possibly multivariate) time series of components ordered by 
             either non-stationarity or stationarity.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         
@@ -678,7 +721,7 @@ class WaSSAf():
 
     n_windows: int
         The number of contiguous windows used for the approximation of 
-        Wassersteindistance.
+        Wasserstein distance.
         Default: 10.
 
     epsilon: float
@@ -812,11 +855,16 @@ class WaSSAf():
             Returns self.
         """
 
+        X = check_input(X, self.n_components)
+
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
         # whiten the data
         Xw = pca_white.transform(X)
+
+        # windows of at least 2 samples for the window covariances
+        check_n_windows(self.n_windows, X.shape[0], min_length=2)
 
         # get matrix S
         S = self._compute_S(Xw)
@@ -850,6 +898,8 @@ class WaSSAf():
             either non-stationarity or stationarity.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -869,6 +919,8 @@ class WaSSAf():
             A (possibly multivariate) time series of components ordered by 
             either non-stationarity or stationarity.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         
@@ -906,7 +958,7 @@ class WaSSAr():
 
     n_windows: int
         The number of contiguous windows used for the approximation of 
-        Wassersteindistance.
+        Wasserstein distance.
         Default: 10.
 
     nonstationary: bool
@@ -980,11 +1032,16 @@ class WaSSAr():
             Returns self.
         """
 
+        X = check_input(X, self.n_components)
+
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
         # whiten the data
         Xw = pca_white.transform(X)
+
+        # windows of at least 2 samples for the window covariances
+        check_n_windows(self.n_windows, X.shape[0], min_length=2)
 
         # get matrix S
         S = self._compute_S(Xw)
@@ -1018,6 +1075,8 @@ class WaSSAr():
             either non-stationarity or stationarity.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -1037,6 +1096,8 @@ class WaSSAr():
             A (possibly multivariate) time series of components ordered by 
             either non-stationarity or stationarity.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         
@@ -1083,7 +1144,8 @@ class BSSnonstat():
         Default: 1.
 
     max_iters: int
-        The number of iterations used during optimisation.
+        The number of iterations of the fixed point algorithm (it always runs
+        for max_iters iterations).
         Default: 100.
 
     n_init: int
@@ -1098,6 +1160,12 @@ class BSSnonstat():
         global NumPy random state is used.
         Default: None.
 
+    tol: float
+        A ConvergenceWarning is raised if the change in a kept projection 
+        vector w (up to sign) in the last iteration, 1 - |w_new^T w|, 
+        exceeds tol. It does not affect the result.
+        Default: 1e-6.
+
     Attributes
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
@@ -1106,13 +1174,14 @@ class BSSnonstat():
     """
 
     def __init__(self, n_components=1, lag=1, max_iters=100, random_state=None,
-                 n_init=5):
+                 n_init=5, tol=1e-6):
 
         self.n_components = n_components
         self.lag = lag
         self.max_iters = max_iters
         self.random_state = random_state
         self.n_init = n_init
+        self.tol = tol
 
     def fit(self, X, y=None):
         """Fit the model to X
@@ -1130,6 +1199,10 @@ class BSSnonstat():
         self : object
             Returns self.
         """
+
+        X = check_input(X, self.n_components)
+
+        check_lag(self.lag, X.shape[0])
 
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
@@ -1157,7 +1230,7 @@ class BSSnonstat():
             # fixed point iteration from n_init random initialisations, 
             # keeping the projection vector with the largest cross-cumulant 
             # magnitude (the iteration can converge to local optima)
-            best_w, best_cum = None, -np.inf
+            best_w, best_cum, best_change = None, -np.inf, np.inf
             for _ in range(self.n_init):
 
                 # initialise the linear transformation vector, orthogonal to
@@ -1167,7 +1240,9 @@ class BSSnonstat():
                 w = w / np.linalg.norm(w)
 
                 # Hyvarinen (2001) equation (7)
+                change = np.inf
                 for _ in range(self.max_iters):
+                    w_previous = w
 
                     # E{z_t (w^T z_t) (w^T z_t-lag)^2} and
                     # E{z_t-lag (w^T z_t-lag) (w^T z_t)^2}
@@ -1183,6 +1258,9 @@ class BSSnonstat():
                     w = w - W @ (W.T @ w)
                     w = w / np.linalg.norm(w)
 
+                    # change in w (up to sign) in this iteration
+                    change = 1 - abs(w.T @ w_previous)[0, 0]
+
                 # cross-cumulant cum(y_t^2, y_t-lag^2), Hyvarinen (2001) 
                 # equation (4)
                 y0 = X0 @ w
@@ -1190,7 +1268,14 @@ class BSSnonstat():
                 cum = (np.mean(y0**2 * ylag**2) - np.mean(y0**2) * np.mean(ylag**2)
                        - 2 * np.mean(y0 * ylag)**2)
                 if abs(cum) > best_cum:
-                    best_w, best_cum = w, abs(cum)
+                    best_w, best_cum, best_change = w, abs(cum), change
+
+            if best_change > self.tol:
+                warnings.warn(f"BSSnonstat may not have converged in max_iters="
+                              f"{self.max_iters} iterations (change in the "
+                              f"projection vector in the last iteration "
+                              f"{best_change:.2e} > tol={self.tol}); consider "
+                              "increasing max_iters.", ConvergenceWarning)
 
             # collect projection vectors
             W = np.concatenate([W, best_w], axis=1)
@@ -1213,9 +1298,12 @@ class BSSnonstat():
         Returns
         -------
         X_new: ndarray, shape (n_samples, n_components)
-            A (possibly multivariate) time series of components ordered by 
-            nonstationarity of the variance.
+            A (possibly multivariate) time series of components, in the 
+            order in which they are found by deflation (they are not sorted 
+            by the nonstationarity of their variance).
         """
+
+        X = check_input(X)
 
         return X @ self.linear_transform_
 
@@ -1233,9 +1321,12 @@ class BSSnonstat():
         Returns
         -------
         X_new: ndarray, shape (n_samples, n_components)
-            A (possibly multivariate) time series of components ordered by 
-            nonstationarity of the variance.
+            A (possibly multivariate) time series of components, in the 
+            order in which they are found by deflation (they are not sorted 
+            by the nonstationarity of their variance).
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         

@@ -9,28 +9,37 @@ maintainers = [
 ]
 description = "Time-series dimension reduction"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE.txt"]
 requires-python = ">=3.8"
 classifiers = [
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Operating System :: OS Independent",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering",
 ]
 dependencies = [
-    "numpy",
-    "scipy",
-    "scikit-learn",
-    "pywavelets",
-    "kneed"
+    "numpy>=1.19",
+    "scipy>=1.5",          # scipy.linalg.eigh(subset_by_index=...)
+    "scikit-learn>=1.0",
+    "pywavelets>=1.1",
+    "kneed>=0.7",
 ]
 
 [project.optional-dependencies]
-test = ["pytest"]
+test = ["pytest", "pandas"]
 
 [project.urls]
 "GitHub Repository (tsdr)" = "https://github.com/KieranOwens/tsdr"
 
 [build-system]
-requires = ["pdm-backend"]
+requires = ["pdm-backend>=2.4"]
 build-backend = "pdm.backend"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]

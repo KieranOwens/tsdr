@@ -21,6 +21,7 @@ from sklearn.decomposition import PCA
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.utils import check_random_state
 
+from ._validation import check_input
 from ._whitening import fit_whitening
 
 from sklearn.linear_model import LinearRegression
@@ -49,7 +50,7 @@ class TLPC():
     eigenvectors corresponding to the least eigenvalues, and (5) apply the
     eigenvector linear transformation to the whitened data.
 
-    Reference: Creutzik & Sprekeler (2008) Predictive coding and the slowness
+    Reference: Creutzig & Sprekeler (2008) Predictive coding and the slowness
     principle, Neural Comp.
 
     Parameters
@@ -90,6 +91,8 @@ class TLPC():
         self : object
             Returns self.
         """
+
+        X = check_input(X, self.n_components)
 
         # data dimensions
         T, _ = X.shape
@@ -143,6 +146,8 @@ class TLPC():
             predictability.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -162,6 +167,8 @@ class TLPC():
             A (possibly multivariate) time series of components ordered by 
             predictability.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         
@@ -202,13 +209,14 @@ class PrCA():
 
     p: int
         The number of time steps (Xt, Xt-1, ...) used to predict the future
-        time point Xt+lag.
+        time point Xt+lag. Must be 1 for model='diff'.
         Default: 1.
 
     model: str
         Specify the predictive model with options 'diff', 'linear_reg', and
-        'kernel_ridge'. 'diff' uses naive differencing and is equivalent to
-        Slow Feature Analysis (SFA) for lag=1 (with whiten=True). 
+        'kernel_ridge'. 'diff' uses naive differencing, i.e., the prediction
+        errors Xt+lag - Xt, and is equivalent to Slow Feature Analysis (SFA)
+        for lag=1. 
         'linear_reg' uses multivariate linear regression. 'kernel_ridge' uses
         kernel ridge regression. Both models predict all variables at time
         t+lag from the previous p time steps of all variables.
@@ -257,10 +265,15 @@ class PrCA():
             raise ValueError(f"Unknown model '{self.model}'. Options are "
                              "'diff', 'linear_reg', and 'kernel_ridge'.")
 
-        # simple differencing (equivalent to SFA)
+        # simple differencing over the time lag, X_{t+lag} - X_t, i.e., the
+        # prediction X_{t+lag} ~ X_t (equivalent to SFA for lag=1)
         if self.model == 'diff':
 
-            E = X[1:,:] - X[:-1,:]
+            if self.p != 1:
+                raise ValueError(f"model='diff' predicts X_t+lag from X_t only, "
+                                 f"so p must be 1 (got p={self.p}).")
+
+            E = X[self.lag:,:] - X[:-self.lag,:]
 
         else:
 
@@ -304,14 +317,16 @@ class PrCA():
             Returns self.
         """
 
-        # fit a PCA whitening model
+        X = check_input(X, self.n_components)
+
+        # fit a PCA whitening model and whiten the data
         pca_white = fit_whitening(X)
         X = pca_white.transform(X)
 
-        # whiten the data
+        # prediction errors of the predictive model
         E = self._get_prediction_errors(X)
 
-        # fit a PCA model to the derivatives
+        # fit a PCA model to the prediction errors
         pca_pred_error = PCA().fit(E)
 
         # get linear transformation
@@ -336,6 +351,8 @@ class PrCA():
             predictability.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -355,6 +372,8 @@ class PrCA():
             A (possibly multivariate) time series of components ordered by 
             predictability.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         
@@ -391,6 +410,13 @@ class DiCCA():
         The time lag over which AR predictability is maximised.
         Default: 5.
 
+    tol: float
+        The alternating estimation of w and beta always runs for 100 
+        iterations for each component. A ConvergenceWarning is raised if the
+        change in the AR weights beta in the last iteration, 
+        ||beta_new - beta||, exceeds tol. It does not affect the result.
+        Default: 1e-6.
+
     Attributes
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
@@ -398,10 +424,11 @@ class DiCCA():
         to the input time series X.
     """
 
-    def __init__(self, n_components=1, s=5):
+    def __init__(self, n_components=1, s=5, tol=1e-6):
 
         self.n_components = n_components
         self.s = s
+        self.tol = tol
 
     def fit(self, X, y=None):
         """Fit the model to X
@@ -419,6 +446,8 @@ class DiCCA():
         self : object
             Returns self.
         """
+
+        X = check_input(X, self.n_components)
 
         # whitening model and transformation
         pca_white = fit_whitening(X)
@@ -453,6 +482,7 @@ class DiCCA():
 
             # iteratively optimize transformation w and AR weights beta
             for _ in range(100):
+                beta_previous = beta
                 # prediction (Ubeta) and prediction error (Utilde)
                 Ubeta = sum([U_list[i]*beta[i] for i in range(self.s)])
                 Utilde = Us - Ubeta
@@ -463,6 +493,14 @@ class DiCCA():
                 Ts = np.concatenate([(U_list[i] @ w).reshape(-1,1) 
                                      for i in range(self.s)], axis=1)
                 beta = np.linalg.pinv(Ts.T @ Ts) @ Ts.T @ Us @ w
+
+            # change in the AR weights beta in the last iteration
+            change = np.linalg.norm(beta - beta_previous)
+            if change > self.tol:
+                warnings.warn(f"DiCCA may not have converged in 100 iterations "
+                              f"for component {nb + 1} (change in the AR weights "
+                              f"in the last iteration {change:.2e} > tol="
+                              f"{self.tol}).", ConvergenceWarning)
 
             # weights r such that t = Xd @ r (since U = Xd V^T diag(1/S))
             r = V.T @ (w / S)
@@ -496,6 +534,8 @@ class DiCCA():
             predictability.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -515,6 +555,8 @@ class DiCCA():
             A (possibly multivariate) time series of components ordered by 
             predictability.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         
@@ -675,6 +717,8 @@ class ForeCA():
             Returns self.
         """
 
+        X = check_input(X, self.n_components)
+
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
@@ -745,6 +789,8 @@ class ForeCA():
             forecastability.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -764,6 +810,8 @@ class ForeCA():
             A (possibly multivariate) time series of components ordered by 
             forecastability.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         
@@ -851,6 +899,8 @@ class PFA():
             Returns self.
         """
 
+        X = check_input(X, self.n_components)
+
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
@@ -903,6 +953,8 @@ class PFA():
             predictability.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -922,6 +974,8 @@ class PFA():
             A (possibly multivariate) time series of components ordered by 
             predictability.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         
@@ -1088,6 +1142,8 @@ class PTS():
             Returns self.
         """
 
+        X = check_input(X, self.n_components)
+
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
@@ -1162,6 +1218,8 @@ class PTS():
             predictability.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -1181,6 +1239,8 @@ class PTS():
             A (possibly multivariate) time series of components ordered by 
             predictability.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         
@@ -1307,6 +1367,8 @@ class DCA():
             Returns self.
         """
 
+        X = check_input(X, self.n_components)
+
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
@@ -1348,7 +1410,15 @@ class DCA():
             V = np.linalg.qr(result.x.reshape(D, d))[0]
             pi = self._predictive_information(V, Sigma)[0]
             if best is None or pi > best[1]:
-                best = (V, pi)
+                best = (V, pi, result)
+
+        # warn if the optimisation that gave the kept solution did not 
+        # report success
+        best_result = best[2]
+        if not best_result.success:
+            warnings.warn(f"DCA: the L-BFGS optimisation of the kept solution "
+                          f"did not converge ({best_result.message}).",
+                          ConvergenceWarning)
 
         self.predictive_information_ = best[1]
 
@@ -1374,6 +1444,8 @@ class DCA():
             most predictive subspace.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -1393,6 +1465,8 @@ class DCA():
             A (possibly multivariate) time series of components spanning the
             most predictive subspace.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         

@@ -137,6 +137,30 @@ def test_prca_kernel_ridge_linear_kernel(opposite_ar_sources):
                                unmixing(X, S[:, :2])) > 0.99)
 
 
+@pytest.mark.parametrize("lag", [1, 3])
+def test_prca_diff_uses_lag(opposite_ar_sources, lag):
+    """model='diff' minimises the variance of x_{t+lag} - x_t of the
+    (unit-variance) components."""
+    S = opposite_ar_sources[:5000]
+    X, _ = random_mix(S, seed=5)
+    model = PrCA(n_components=2, lag=lag).fit(X)
+    Xw, W, _ = whiten_ref(X)
+    E = Xw[lag:] - Xw[:-lag]
+    _, V = np.linalg.eigh(np.cov(E, rowvar=False))
+    assert np.all(subspace_cos(model.linear_transform_, W @ V[:, :2]) > 0.999)
+
+
+def test_prca_diff_lag1_equals_sfa(opposite_ar_sources):
+    X, _ = random_mix(opposite_ar_sources[:2000], seed=5)
+    np.testing.assert_allclose(PrCA(n_components=2).fit_transform(X),
+                               SFA(n_components=2).fit_transform(X))
+
+
+def test_prca_diff_with_p_raises(opposite_ar_sources):
+    with pytest.raises(ValueError, match="p must be 1"):
+        PrCA(model='diff', p=2).fit(opposite_ar_sources[:500])
+
+
 def test_prca_unknown_model_raises(opposite_ar_sources):
     with pytest.raises(ValueError, match="Unknown model"):
         PrCA(model='ridge').fit(opposite_ar_sources[:500])
