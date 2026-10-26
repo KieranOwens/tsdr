@@ -6,6 +6,7 @@
   <a href="https://doi.org/10.36227/techrxiv.176409662.29359239/v1"><img src="https://img.shields.io/badge/paper-TechRxiv%20(2025)-informational" alt="Paper"/></a>
   <a href="https://pypi.org/project/tsdr/"><img src="https://img.shields.io/pypi/v/tsdr?label=PyPI" alt="PyPI version"/></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"/></a>
+  <a href="https://doi.org/10.5281/zenodo.23661377"><img src="https://zenodo.org/badge/1086045556.svg" alt="DOI"></a>
 </p>
 
 _tsdr_ is a Python package of time-series dimension reduction (TSDR) methods: algorithms that reduce multivariate data to a few components by exploiting temporal structure.
