@@ -4,7 +4,9 @@
 # Contains:
 # TICA - Time-lagged Independent Component Analysis
 # TMCA - Time-lagged Maximum Covariance Analysis
-# TCCA_Stiefel - TCCA via trace optimisation on a Stiefel manifold
+# TCCA - Time-lagged Canonical Correlation Analysis
+# TCCA_Stiefel - Trace-ratio optimisation on a Stiefel manifold (which, for
+#                whitened data, gives the TICA subspace)
 # CSA - Coloured Subspace Analysis
 # sPCA_dwt - Spectral Principal Component Analysis using the
 #            discrete wavelet transform
@@ -14,9 +16,11 @@ import warnings
 
 import numpy as np
 from sklearn.exceptions import ConvergenceWarning
+from sklearn.utils import check_random_state
 import pywt
 
-from ._validation import check_input
+from ._linalg import largest_entry_signs, sqrtm_psd
+from ._validation import check_input, check_lag
 from ._whitening import fit_whitening
 
 ###############################################################################
@@ -55,7 +59,11 @@ class TICA():
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
         The linear transformation that yields the TICA components when applied 
-        to the input time series X.
+        to the centred time series X - mean_.
+
+    mean_: ndarray, shape (n_features,)
+        The mean of the fitted time series, which transform subtracts
+        from X before applying linear_transform_.
     """
 
     def __init__(self, n_components=1, lag=1):
@@ -88,6 +96,10 @@ class TICA():
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
+        # the mean of X, which transform subtracts (the components are
+        # fitted to the centred, whitened data)
+        self.mean_ = pca_white.mean_
+
         # whiten the data
         Xw = pca_white.transform(X)
 
@@ -104,6 +116,11 @@ class TICA():
         transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
         transform2 = eigvecs[:,-1:-(self.n_components+1):-1]
         self.linear_transform_ = (transform1 @ transform2)
+
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
 
         return self
 
@@ -124,7 +141,8 @@ class TICA():
 
         X = check_input(X)
 
-        return X @ self.linear_transform_
+        # centre X with the mean of the fitted data, as in fit
+        return (X - self.mean_) @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
         """Fit the model to X and apply dimension reduction to X.
@@ -186,7 +204,11 @@ class TMCA():
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
         The linear transformation that yields the TMCA components when applied 
-        to the input time series X.
+        to the centred time series X - mean_.
+
+    mean_: ndarray, shape (n_features,)
+        The mean of the fitted time series, which transform subtracts
+        from X before applying linear_transform_.
     """
 
     def __init__(self, n_components=1, lag=1):
@@ -219,6 +241,10 @@ class TMCA():
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
+        # the mean of X, which transform subtracts (the components are
+        # fitted to the centred, whitened data)
+        self.mean_ = pca_white.mean_
+
         # whiten the data
         Xw = pca_white.transform(X)
 
@@ -232,6 +258,11 @@ class TMCA():
         transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
         transform2 = U[:,:self.n_components]
         self.linear_transform_ = (transform1 @ transform2)
+
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
 
         return self
 
@@ -252,7 +283,8 @@ class TMCA():
 
         X = check_input(X)
 
-        return X @ self.linear_transform_
+        # centre X with the mean of the fitted data, as in fit
+        return (X - self.mean_) @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
         """Fit the model to X and apply dimension reduction to X.
@@ -280,22 +312,236 @@ class TMCA():
 
 ###############################################################################
 ###############################################################################
-# TCCA_Stiefel - Time-lagged Canonical Component Analysis via 
-#                trace optimisation on a Stiefel manifold
+# TCCA - Time-lagged Canonical Correlation Analysis
+###############################################################################
+###############################################################################
+
+class TCCA():
+    """
+    Time-lagged Canonical Correlation Analysis (TCCA).
+
+    TCCA is a TSDR method for extracting the components of a multivariate 
+    time series that are most correlated with the future of the time series 
+    at some time lag. It applies canonical correlation analysis (CCA) to the 
+    pairs (x_t, x_{t+lag}): the first pair of canonical weights (u_1, v_1) 
+    maximises corr(u^T x_t, v^T x_{t+lag}), the second pair maximises it 
+    among components uncorrelated with the first, and so on. The canonical 
+    correlations are the singular values of the whitened time-lagged 
+    covariance (the Koopman matrix of Wu et al., 2017).
+
+    The steps involved in TCCA are: (1) whiten the data, (2) form the 
+    instantaneous data X0 = x_t and the time-lagged data X1 = x_{t+lag}, 
+    centre each, and compute their covariances C00 and C11 and their 
+    cross-covariance C01, (3) compute the SVD of the whitened cross-covariance
+    K = C00^-1/2 C01 C11^-1/2 = U diag(s) V^T, and (4) return the 
+    projections of the data onto the left canonical weights C00^-1/2 U, 
+    ordered by canonical correlation s.
+
+    The components are the "instantaneous" (left) canonical variates u^T x_t.
+    The right canonical weights C11^-1/2 V, whose variates v^T x_{t+lag} are
+    the parts of the future that each component predicts best, are stored 
+    in right_transform_. For a time-reversible process (C01 symmetric and 
+    C00 = C11), the left and right weights coincide and the components are 
+    those of TICA, except that TCCA orders them by the absolute value of 
+    their lagged autocorrelation (so a strongly negatively autocorrelated 
+    component ranks high), whereas TICA orders them by its signed value.
+
+    Unlike TCCA_Stiefel, which optimises one shared matrix of weights for a 
+    trace ratio, TCCA uses separate weights for x_t and x_{t+lag}, and is 
+    computed in closed form.
+
+    References: 
+    Hotelling (1936) Relations between two sets of variates, Biometrika.
+    Wu et al (2017) Variational Koopman models: slow collective variables 
+    and molecular kinetics from short off-equilibrium simulations, J Chem 
+    Phys.
+
+    Parameters
+    ----------
+    n_components: int
+        The dimension (number of variables) of the time-series output.
+        Default: 1.
+
+    lag: int
+        The time lag between x_t and x_{t+lag}.
+        Default: 1.
+
+    Attributes
+    ----------
+    linear_transform_: ndarray, shape (n_features, n_components)
+        The left canonical weights, the linear transformation that yields the
+        TCCA components when applied to the centred time series X - mean_.
+
+    right_transform_: ndarray, shape (n_features, n_components)
+        The right canonical weights: (X - mean_) @ right_transform_ gives the
+        canonical variates of the time-lagged data matched to the components.
+
+    mean_: ndarray, shape (n_features,)
+        The mean of the fitted time series, which transform subtracts
+        from X before applying linear_transform_.
+
+    canonical_correlations_: ndarray, shape (n_features,)
+        The canonical correlations corr(u_k^T x_t, v_k^T x_{t+lag}) of all
+        pairs of canonical weights, in decreasing order (the first 
+        n_components are those of the components).
+    """
+
+    def __init__(self, n_components=1, lag=1):
+
+        self.n_components = n_components
+        self.lag = lag
+
+    def fit(self, X, y=None):
+        """Fit the model to X
+
+        Parameters
+        ----------
+        X : ndarray, shape (n_samples, n_features)
+            A multivariate time series of shape (n_samples, n_features).
+
+        y : None
+            Ignored. Used to comply with the scikit-learn API.
+
+        Returns
+        -------
+        self : object
+            Returns self.
+        """
+
+        X = check_input(X, self.n_components)
+
+        # data dimensions
+        T, D = X.shape
+
+        # at least D + 1 pairs (x_t, x_{t+lag}), for nonsingular covariances
+        check_lag(self.lag, T - D)
+
+        # fit a PCA whitening model
+        pca_white = fit_whitening(X)
+
+        # the mean of X, which transform subtracts (the components are
+        # fitted to the centred, whitened data)
+        self.mean_ = pca_white.mean_
+
+        # whiten the data
+        Xw = pca_white.transform(X)
+
+        # instantaneous and time-lagged data, each centred
+        X0 = Xw[:-self.lag,:]
+        X1 = Xw[self.lag:,:]
+        X0 = X0 - np.mean(X0, axis=0)
+        X1 = X1 - np.mean(X1, axis=0)
+
+        # covariances and cross-covariance
+        n = T - self.lag
+        C00 = X0.T @ X0 / (n - 1)
+        C11 = X1.T @ X1 / (n - 1)
+        C01 = X0.T @ X1 / (n - 1)
+
+        # whitening matrices of the instantaneous and time-lagged data
+        C00_inv_root = np.linalg.inv(sqrtm_psd(C00))
+        C11_inv_root = np.linalg.inv(sqrtm_psd(C11))
+
+        # SVD of the whitened cross-covariance (Koopman matrix); the singular
+        # values are the canonical correlations, in decreasing order
+        K = C00_inv_root @ C01 @ C11_inv_root
+        U, s, Vt = np.linalg.svd(K)
+        self.canonical_correlations_ = s
+
+        # get linear transformations (left and right canonical weights)
+        transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
+        self.linear_transform_ = transform1 @ C00_inv_root @ U[:,:self.n_components]
+        self.right_transform_ = transform1 @ C11_inv_root @ Vt.T[:,:self.n_components]
+
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive (and the same for its right
+        # canonical variate, so that the canonical correlations stay positive)
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
+        self.right_transform_ = self.right_transform_ * signs
+
+        return self
+
+    def transform(self, X):
+        """Apply dimension reduction to X.
+
+        Parameters
+        ----------
+        X : ndarray, shape (n_samples, n_features)
+            A multivariate time series of shape (n_samples, n_features).
+
+        Returns
+        -------
+        X_new: ndarray, shape (n_samples, n_components)
+            A (possibly multivariate) time series of components ordered by 
+            canonical correlation with the time-lagged data.
+        """
+
+        X = check_input(X)
+
+        # centre X with the mean of the fitted data, as in fit
+        return (X - self.mean_) @ self.linear_transform_
+
+    def fit_transform(self, X, y=None):
+        """Fit the model to X and apply dimension reduction to X.
+
+        Parameters
+        ----------
+        X : ndarray, shape (n_samples, n_features)
+            A multivariate time series of shape (n_samples, n_features).
+
+        y : None
+            Ignored. Used to comply with the scikit-learn API.
+
+        Returns
+        -------
+        X_new: ndarray, shape (n_samples, n_components)
+            A (possibly multivariate) time series of components ordered by 
+            canonical correlation with the time-lagged data.
+        """
+
+        X = check_input(X, self.n_components)
+
+        self.fit(X)
+        
+        return self.transform(X)
+
+###############################################################################
+###############################################################################
+# TCCA_Stiefel - Trace-ratio optimisation of the time-lagged covariance on a
+#                Stiefel manifold
 ###############################################################################
 ###############################################################################
 
 class TCCA_Stiefel:
     """
-    Time-lagged Canonical Component Analysis via trace optimisation on a 
-    Stiefel manifold (TCCA_Stiefel).
+    Time-lagged trace-ratio optimisation on a Stiefel manifold 
+    (TCCA_Stiefel).
 
     TCCA_Stiefel is a TSDR method for extracting the most autocorrelated 
-    components from a multivariate time series at some time lag.
+    components from a multivariate time series at some time lag. It finds 
+    the matrix W with orthonormal columns (a point on the Stiefel manifold) 
+    that maximises the trace ratio tr(W^T Ctau W) / tr(W^T C0 W) by 
+    Riemannian gradient ascent, in the framework of Cunningham & Ghahramani 
+    (2015), and then rotates W within its column space to order the 
+    components by autocorrelation.
 
-    The steps involved in TCCA are: (1) whiten the data, and (2) apply CCA
-    at some time lag. The TCCA_Stiefel function performs CCA via trace optimisation 
-    on a Stiefel manifold.
+    The steps involved in TCCA_Stiefel are: (1) whiten the data (optional), 
+    (2) compute the covariance C0 of x_t and the time-lagged covariance Ctau
+    of x_t and x_{t+lag}, (3) maximise the trace ratio over W on the Stiefel
+    manifold, and (4) apply W to the (whitened) data.
+
+    What it computes: the same weights W are used for x_t and x_{t+lag}, so 
+    this is not canonical correlation analysis between x_t and x_{t+lag} 
+    (for which see TCCA, which uses separate weights and is computed in 
+    closed form). Since only the symmetric part of Ctau enters the trace, 
+    and C0 is (almost exactly) the identity for whitened data, the optimum 
+    is the span of the leading eigenvectors of the symmetrised lagged 
+    covariance, i.e., the TICA subspace: with whiten=True (the default) the 
+    components coincide with those of TICA (up to sign, convergence and the
+    small difference between C0 and the identity). With whiten=False the 
+    trace ratio is maximised for the raw (centred) data, which is not 
+    invariant to the scaling of the channels.
 
     Reference: Cunningham & Ghahramani (2015) Linear dimensionality reduction,
     JMLR.
@@ -325,27 +571,39 @@ class TCCA_Stiefel:
         below tol.
         Default: 1e-6.
 
-    seed: int
-        The random seed used for initialisation of the linear transformation
-        weights.
+    random_state: int, RandomState instance or None
+        Controls the random initialisation of the linear transformation 
+        weights. Pass an int for reproducible results across calls (the 
+        global NumPy random state is then left unchanged). If None, the 
+        global NumPy random state is used.
         Default: 0.
 
+    seed: int or None
+        Deprecated alias of random_state (if not None, it is used in place 
+        of random_state, with a DeprecationWarning).
+        Default: None.
+
     whiten: bool
-        Whether to whiten the data.
+        Whether to whiten the data (if False, the data are mean-centred).
         Default: True.
 
     Attributes
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
         The linear transformation that yields the TCCA components when applied 
-        to the input time series X.
+        to the centred time series X - mean_.
+
+    mean_: ndarray, shape (n_features,)
+        The mean of the fitted time series, which transform subtracts
+        from X before applying linear_transform_.
     """
-    def __init__(self, n_components=1, lag=1, max_iters=1000, lr=0.1, seed=0, whiten=True,
-                 tol=1e-6):
+    def __init__(self, n_components=1, lag=1, max_iters=1000, lr=0.1, random_state=0, 
+                 whiten=True, tol=1e-6, seed=None):
         self.n_components = n_components
         self.lag = lag
         self.max_iters = max_iters
         self.lr = lr
+        self.random_state = random_state
         self.seed = seed
         self.whiten = whiten
         self.tol = tol
@@ -404,10 +662,16 @@ class TCCA_Stiefel:
         # Time-lag used for TCCA
         lag = self.lag
 
-        # Whiten the data if required
+        # the mean of X, which transform subtracts
+        self.mean_ = np.mean(X, axis=0)
+
+        # Whiten the data if required (whitening also centres the data);
+        # otherwise centre it, since C0 and Ctau are covariances
         if self.whiten:
             pca_white = fit_whitening(X)
             X = pca_white.transform(X)
+        else:
+            X = X - self.mean_
 
         # Covariance matrices
         X0 = X[:-lag, :] 
@@ -415,9 +679,15 @@ class TCCA_Stiefel:
         C0 = (X0.T @ X0) / (T - 1 - lag)
         Ctau = (X0.T @ Xtau) / (T - 1 - lag)
 
-        # Random number generator for initialisation of W (without 
-        # resetting the global NumPy random state)
-        rng = np.random.RandomState(self.seed)
+        # Random number generator for initialisation of W (an int 
+        # random_state does not reset the global NumPy random state); seed is 
+        # the deprecated name of random_state
+        random_state = self.random_state
+        if self.seed is not None:
+            warnings.warn("The seed argument of TCCA_Stiefel is deprecated; use "
+                          "random_state instead.", DeprecationWarning, stacklevel=2)
+            random_state = self.seed
+        rng = check_random_state(random_state)
 
         # Initialise W on the Stiefel manifold
         W = rng.randn(D, self.n_components)
@@ -454,6 +724,11 @@ class TCCA_Stiefel:
         else:
             self.linear_transform_ = W
 
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
+
         return self
 
     def transform(self, X):
@@ -473,7 +748,8 @@ class TCCA_Stiefel:
 
         X = check_input(X)
 
-        return X @ self.linear_transform_
+        # centre X with the mean of the fitted data, as in fit
+        return (X - self.mean_) @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
         """Fit the model to X and apply dimension reduction to X.
@@ -551,7 +827,11 @@ class CSA():
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
         The linear transformation that yields the CSA components when applied 
-        to the input time series X.
+        to the centred time series X - mean_.
+
+    mean_: ndarray, shape (n_features,)
+        The mean of the fitted time series, which transform subtracts
+        from X before applying linear_transform_.
     """
 
     def __init__(self, n_components=1, lag=2, max_iters=1000, tol=1e-6):
@@ -608,6 +888,10 @@ class CSA():
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
+        # the mean of X, which transform subtracts (the components are
+        # fitted to the centred, whitened data)
+        self.mean_ = pca_white.mean_
+
         # whiten the data
         Xw = pca_white.transform(X)
 
@@ -634,13 +918,10 @@ class CSA():
         change = np.inf
         for _ in range(self.max_iters):
             W_previous = W
-            C = Ctensor[0]
-            if self.n_components==1:
-                outer = np.outer(W, W).T
-            else:
-                outer = W @ W.T
-            R = C @ outer @ C.T + C.T @ outer @ C
-            for C in Ctensor[1:]:
+            # projection onto the current subspace (W has orthonormal columns)
+            outer = W @ W.T
+            R = np.zeros_like(outer)
+            for C in Ctensor:
                 R += C @ outer @ C.T + C.T @ outer @ C
             _, eigvecs = np.linalg.eigh(R)
             W = eigvecs[:,-1:-self.n_components-1:-1]
@@ -657,6 +938,11 @@ class CSA():
         # get linear transformation
         transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
         self.linear_transform_ = transform1 @ W
+
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
 
         return self
 
@@ -677,7 +963,8 @@ class CSA():
 
         X = check_input(X)
 
-        return X @ self.linear_transform_
+        # centre X with the mean of the fitted data, as in fit
+        return (X - self.mean_) @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
         """Fit the model to X and apply dimension reduction to X.
@@ -813,6 +1100,10 @@ class sPCA_dwt():
 
         # the inverse DWT has an extra sample for odd T
         self.components = self.components[:T]
+
+        # fix the arbitrary sign of each component so that its value of
+        # largest magnitude is positive
+        self.components = self.components * largest_entry_signs(self.components)
 
         return self
 

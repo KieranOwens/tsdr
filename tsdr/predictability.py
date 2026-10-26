@@ -21,6 +21,7 @@ from sklearn.decomposition import PCA
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.utils import check_random_state
 
+from ._linalg import largest_entry_signs
 from ._validation import check_input
 from ._whitening import fit_whitening
 
@@ -67,7 +68,11 @@ class TLPC():
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
         The linear transformation that yields the TLPC components when applied 
-        to the input time series X.
+        to the centred time series X - mean_.
+
+    mean_: ndarray, shape (n_features,)
+        The mean of the fitted time series, which transform subtracts
+        from X before applying linear_transform_.
     """
 
     def __init__(self, n_components=1, lag=1):
@@ -100,6 +105,10 @@ class TLPC():
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
+        # the mean of X, which transform subtracts (the components are
+        # fitted to the centred, whitened data)
+        self.mean_ = pca_white.mean_
+
         # whiten the data
         Xw = pca_white.transform(X)
 
@@ -129,6 +138,11 @@ class TLPC():
         transform2 = eigvecs[:,:self.n_components]
         self.linear_transform_ = transform1 @ transform2
 
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
+
         return self
 
     def transform(self, X):
@@ -148,7 +162,8 @@ class TLPC():
 
         X = check_input(X)
 
-        return X @ self.linear_transform_
+        # centre X with the mean of the fitted data, as in fit
+        return (X - self.mean_) @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
         """Fit the model to X and apply dimension reduction to X.
@@ -231,7 +246,11 @@ class PrCA():
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
         The linear transformation that yields the PrCA components when applied 
-        to the input time series X.
+        to the centred time series X - mean_.
+
+    mean_: ndarray, shape (n_features,)
+        The mean of the fitted time series, which transform subtracts
+        from X before applying linear_transform_.
     """
 
     def __init__(self, n_components=1, lag=1, p=1, model='diff', **kwargs):
@@ -321,6 +340,11 @@ class PrCA():
 
         # fit a PCA whitening model and whiten the data
         pca_white = fit_whitening(X)
+
+        # the mean of X, which transform subtracts (the components are
+        # fitted to the centred, whitened data)
+        self.mean_ = pca_white.mean_
+
         X = pca_white.transform(X)
 
         # prediction errors of the predictive model
@@ -334,6 +358,11 @@ class PrCA():
         transform2 = pca_pred_error.components_.T
         self.linear_transform_ = (transform1 @ transform2)[:,-1:-(self.n_components+1):-1]
         
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
+
         return self
 
     def transform(self, X):
@@ -353,7 +382,8 @@ class PrCA():
 
         X = check_input(X)
 
-        return X @ self.linear_transform_
+        # centre X with the mean of the fitted data, as in fit
+        return (X - self.mean_) @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
         """Fit the model to X and apply dimension reduction to X.
@@ -421,7 +451,11 @@ class DiCCA():
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
         The linear transformation that yields the DiCCA components when applied 
-        to the input time series X.
+        to the centred time series X - mean_.
+
+    mean_: ndarray, shape (n_features,)
+        The mean of the fitted time series, which transform subtracts
+        from X before applying linear_transform_.
     """
 
     def __init__(self, n_components=1, s=5, tol=1e-6):
@@ -451,6 +485,11 @@ class DiCCA():
 
         # whitening model and transformation
         pca_white = fit_whitening(X)
+
+        # the mean of X, which transform subtracts (the components are
+        # fitted to the centred, whitened data)
+        self.mean_ = pca_white.mean_
+
         Xw = pca_white.transform(X)
         transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
 
@@ -517,6 +556,11 @@ class DiCCA():
 
         self.linear_transform_ = np.concatenate(W, axis=1)
 
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
+
         return self
 
     def transform(self, X):
@@ -536,7 +580,8 @@ class DiCCA():
 
         X = check_input(X)
 
-        return X @ self.linear_transform_
+        # centre X with the mean of the fitted data, as in fit
+        return (X - self.mean_) @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
         """Fit the model to X and apply dimension reduction to X.
@@ -632,20 +677,24 @@ class ForeCA():
         Controls the random starts. Pass an int for reproducible results 
         across calls (the global NumPy random state is then left unchanged). 
         If None, the global NumPy random state is used.
-        Default: None.
+        Default: 0.
 
     Attributes
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
         The linear transformation that yields the ForeCA components when 
-        applied to the input time series X.
+        applied to the centred time series X - mean_.
+
+    mean_: ndarray, shape (n_features,)
+        The mean of the fitted time series, which transform subtracts
+        from X before applying linear_transform_.
 
     omega_: ndarray, shape (n_components,)
         The forecastability Omega of each component, in descending order.
     """
 
     def __init__(self, n_components=1, bandwidth=5, prior_weight=1e-3, 
-                 n_starts=10, max_iters=100, tol=1e-6, random_state=None):
+                 n_starts=10, max_iters=100, tol=1e-6, random_state=0):
 
         self.n_components = n_components
         self.bandwidth = bandwidth
@@ -722,6 +771,10 @@ class ForeCA():
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
+        # the mean of X, which transform subtracts (the components are
+        # fitted to the centred, whitened data)
+        self.mean_ = pca_white.mean_
+
         # whiten the data
         Xw = pca_white.transform(X)
 
@@ -772,6 +825,11 @@ class ForeCA():
         transform2 = W[:,order]
         self.linear_transform_ = transform1 @ transform2
 
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
+
         return self
 
     def transform(self, X):
@@ -791,7 +849,8 @@ class ForeCA():
 
         X = check_input(X)
 
-        return X @ self.linear_transform_
+        # centre X with the mean of the fitted data, as in fit
+        return (X - self.mean_) @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
         """Fit the model to X and apply dimension reduction to X.
@@ -869,7 +928,11 @@ class PFA():
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
         The linear transformation that yields the PFA components when applied 
-        to the input time series X.
+        to the centred time series X - mean_.
+
+    mean_: ndarray, shape (n_features,)
+        The mean of the fitted time series, which transform subtracts
+        from X before applying linear_transform_.
 
     eigvals_: ndarray, shape (n_features,)
         The summed prediction error variance of each (unit-variance) 
@@ -904,6 +967,10 @@ class PFA():
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
+        # the mean of X, which transform subtracts (the components are
+        # fitted to the centred, whitened data)
+        self.mean_ = pca_white.mean_
+
         # whiten the data
         Xw = pca_white.transform(X)
 
@@ -936,6 +1003,11 @@ class PFA():
         transform2 = eigvecs[:,:self.n_components]
         self.linear_transform_ = transform1 @ transform2
 
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
+
         return self
 
     def transform(self, X):
@@ -955,7 +1027,8 @@ class PFA():
 
         X = check_input(X)
 
-        return X @ self.linear_transform_
+        # centre X with the mean of the fitted data, as in fit
+        return (X - self.mean_) @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
         """Fit the model to X and apply dimension reduction to X.
@@ -1035,14 +1108,19 @@ class PTS():
 
     tol: float
         The iteration for each component stops when the decrease in the 
-        prediction error falls below tol.
+        prediction error falls below tol, or when the prediction error 
+        increases (in which case the previous w is kept).
         Default: 1e-8.
 
     Attributes
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
         The linear transformation that yields the PTS components when applied 
-        to the input time series X.
+        to the centred time series X - mean_.
+
+    mean_: ndarray, shape (n_features,)
+        The mean of the fitted time series, which transform subtracts
+        from X before applying linear_transform_.
 
     ar_coefs_: ndarray, shape (M, n_components, n_components)
         The coefficients A_1, ..., A_M of the VAR model of the components.
@@ -1147,6 +1225,10 @@ class PTS():
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
+        # the mean of X, which transform subtracts (the components are
+        # fitted to the centred, whitened data)
+        self.mean_ = pca_white.mean_
+
         # whiten the data
         Z = pca_white.transform(X)
 
@@ -1175,10 +1257,19 @@ class PTS():
                 A, _ = self._fit_var(Z, np.column_stack([W, w]))
 
                 # (b) w with A fixed
-                w = self._update_w(Z, W, A)
+                w_new = self._update_w(Z, W, A)
 
                 # prediction error of the VAR model refitted with the new w
-                A, error_new = self._fit_var(Z, np.column_stack([W, w]))
+                A_new, error_new = self._fit_var(Z, np.column_stack([W, w_new]))
+
+                # if the prediction error increased (e.g., through rounding
+                # near the optimum), keep the previous w and its VAR fit
+                if error_new > error:
+                    error_new = error
+                    converged = True
+                    break
+
+                w, A = w_new, A_new
                 if error - error_new < self.tol:
                     converged = True
                     break
@@ -1201,6 +1292,13 @@ class PTS():
         transform2 = W
         self.linear_transform_ = transform1 @ transform2
 
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive, and change the VAR coefficients of
+        # the components to match (S A_i S, for S = diag(signs))
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
+        self.ar_coefs_ = self.ar_coefs_ * np.outer(signs, signs)
+
         return self
 
     def transform(self, X):
@@ -1220,7 +1318,8 @@ class PTS():
 
         X = check_input(X)
 
-        return X @ self.linear_transform_
+        # centre X with the mean of the fitted data, as in fit
+        return (X - self.mean_) @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
         """Fit the model to X and apply dimension reduction to X.
@@ -1305,13 +1404,17 @@ class DCA():
         Controls the random initialisations. Pass an int for reproducible 
         results across calls (the global NumPy random state is then left 
         unchanged). If None, the global NumPy random state is used.
-        Default: None.
+        Default: 0.
 
     Attributes
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
         The linear transformation that yields the DCA components when applied 
-        to the input time series X.
+        to the centred time series X - mean_.
+
+    mean_: ndarray, shape (n_features,)
+        The mean of the fitted time series, which transform subtracts
+        from X before applying linear_transform_.
 
     predictive_information_: float
         The Gaussian predictive information (in nats) of the components 
@@ -1320,7 +1423,7 @@ class DCA():
     """
 
     def __init__(self, n_components=1, T=5, n_init=5, ortho_penalty=1.0, 
-                 random_state=None):
+                 random_state=0):
 
         self.n_components = n_components
         self.T = T
@@ -1371,6 +1474,10 @@ class DCA():
 
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
+
+        # the mean of X, which transform subtracts (the components are
+        # fitted to the centred, whitened data)
+        self.mean_ = pca_white.mean_
 
         # whiten the data
         Xw = pca_white.transform(X)
@@ -1427,6 +1534,11 @@ class DCA():
         transform2 = best[0]
         self.linear_transform_ = transform1 @ transform2
 
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
+
         return self
 
     def transform(self, X):
@@ -1446,7 +1558,8 @@ class DCA():
 
         X = check_input(X)
 
-        return X @ self.linear_transform_
+        # centre X with the mean of the fitted data, as in fit
+        return (X - self.mean_) @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
         """Fit the model to X and apply dimension reduction to X.

@@ -6,8 +6,9 @@
 # DMD - Dynamic Mode Decomposition
 
 import numpy as np
-from scipy.linalg import eig
+import scipy.linalg
 
+from ._linalg import largest_entry_signs
 from ._validation import check_input, check_n_components
 from ._whitening import fit_whitening
 
@@ -53,11 +54,15 @@ class DyCA():
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
         The linear transformation that yields the DyCA components when applied 
-        to the input time series X.
+        to the centred time series X - mean_.
+
+    mean_: ndarray, shape (n_features,)
+        The mean of the fitted time series, which transform subtracts
+        from X before applying linear_transform_.
 
     eigvals_: ndarray, shape (n_eigvals,)
-        The generalised eigenvalues that are <= 1, ordered by decreasing 
-        modulus (eigenvalues > 1 arise from the singularity of C0 and are 
+        The (real) generalised eigenvalues that are <= 1, in decreasing 
+        order (eigenvalues > 1 arise from the singularity of C0 and are 
         excluded, so n_eigvals <= n_features).
     """
 
@@ -95,6 +100,10 @@ class DyCA():
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
+        # the mean of X, which transform subtracts (the components are
+        # fitted to the centred, whitened data)
+        self.mean_ = pca_white.mean_
+
         # whiten the data
         X = pca_white.transform(X)
 
@@ -106,30 +115,47 @@ class DyCA():
         C1 = (Xdot.T @ X) / T
         C2 = (Xdot.T @ Xdot) / T
 
-        # generalised eigenvalue problem
+        # generalised eigenvalue problem LHS w = lambda RHS w. LHS is 
+        # symmetric positive semi-definite (symmetrised here, as it is only 
+        # symmetric up to rounding) and RHS is the positive definite 
+        # covariance of the derivative, so this is a symmetric-definite 
+        # problem with real eigenvalues, which scipy.linalg.eigh returns in 
+        # ascending order
         LHS = C1 @ np.linalg.pinv(C0) @ C1.T
+        LHS = 0.5 * (LHS + LHS.T)
         RHS = C2
-        eigvals, eigvecs = eig(LHS, RHS)
-        abseigvals = np.real(np.abs(eigvals))
-        eigvals, eigvecs = eigvals[np.argsort(-abseigvals)], eigvecs[:,np.argsort(-abseigvals)]
-        self.eigvals_ = eigvals[np.array(eigvals <= 1)]
+        eigvals, eigvecs = scipy.linalg.eigh(LHS, RHS)
+
+        # order by decreasing eigenvalue, and scale the eigenvectors to unit
+        # length (eigh scales them so that w^T RHS w = 1)
+        eigvals, eigvecs = eigvals[::-1], eigvecs[:,::-1]
+        eigvecs = eigvecs / np.linalg.norm(eigvecs, axis=0)
 
         # exclude eigvals > 1 due to singularity of C0
+        valid = eigvals <= 1
+        self.eigvals_ = eigvals[valid]
 
-        if self.eig_threshold == None:
-            eigvecs = eigvecs[:,np.array(eigvals <= 1)]
+        # select the eigenvectors (all valid ones, or those whose eigenvalues
+        # exceed the threshold)
+        if self.eig_threshold is None:
+            selected = valid
         else:
-            eigvecs = eigvecs[:,np.array(eigvals > self.eig_threshold) &  np.array(eigvals <= 1)]
+            selected = valid & (eigvals > self.eig_threshold)
+        eigvecs = eigvecs[:,selected]
 
         # return transformed data or else generate an error
         transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
         if eigvecs.shape[1] > 0:
             C3 = np.linalg.pinv(C1) @ C2
-            W = np.concatenate((eigvecs, 
-                                np.apply_along_axis(lambda x: np.matmul(C3,x), 0, eigvecs)),axis=1)
+            W = np.concatenate((eigvecs, C3 @ eigvecs), axis=1)
             self.linear_transform_ = (transform1 @ W)[:,:self.n_components]
         else:
             raise ValueError(f'No generalised eigenvalue fulfills threshold > {self.eig_threshold}.')
+
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
 
         return self
 
@@ -150,7 +176,8 @@ class DyCA():
 
         X = check_input(X)
 
-        return X @ self.linear_transform_
+        # centre X with the mean of the fitted data, as in fit
+        return (X - self.mean_) @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
         """Fit the model to X and apply dimension reduction to X.
@@ -251,18 +278,22 @@ class DMD():
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
         The linear transformation that yields the DMD components when applied
-        to the input time series X. Complex if return_complex=True.
+        to the centred time series X - mean_. Complex if return_complex=True.
+
+    mean_: ndarray, shape (n_features,)
+        The mean of the fitted time series if whiten=True (whitening centres
+        the data), and zero if whiten=False (exact DMD of the data as given).
+        transform subtracts it from X before applying linear_transform_.
 
     eigvals_: ndarray (complex), shape (n_features,)
         The DMD eigenvalues, ordered by decreasing modulus.
 
     modes_: ndarray (complex), shape (n_features, n_features)
         The DMD modes in the coordinates of the input data, in the same order
-        as eigvals_. With Z = (X - mean) @ W the complex components of all
+        as eigvals_. With Z = (X - mean_) @ W the complex components of all
         modes (W being the full complex linear transformation, of which the
         first columns are linear_transform_ when return_complex=True), the
-        data are reconstructed as X - mean = Z @ modes_.T. Here mean is the
-        mean of X if whiten=True and zero otherwise.
+        data are reconstructed as X - mean_ = Z @ modes_.T.
     """
 
     def __init__(self, n_components=1, whiten=True, return_complex=False):
@@ -295,8 +326,17 @@ class DMD():
             # fit a PCA whitening model
             pca_white = fit_whitening(X)
 
+            # the mean of X, which transform subtracts (whitening centres
+            # the data)
+            self.mean_ = pca_white.mean_
+
             # whiten the data
             X = pca_white.transform(X)
+
+        else:
+
+            # exact DMD of the data as given, without centring
+            self.mean_ = np.zeros(X.shape[1], dtype=X.dtype)
 
         # data and time-lagged data
         X, Y = X[:-1,:], X[1:]
@@ -387,7 +427,8 @@ class DMD():
 
         X = check_input(X)
 
-        return X @ self.linear_transform_
+        # centre X with the mean of the fitted data, as in fit
+        return (X - self.mean_) @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
         """Fit the model to X and apply dimension reduction to X.

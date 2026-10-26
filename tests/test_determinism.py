@@ -108,3 +108,26 @@ def test_dmd_real_output_shape_and_dtype(oscillator_sources):
         Y = DMD(n_components=n).fit_transform(X)
         assert Y.shape == (len(X), n)
         assert np.isrealobj(Y)
+
+
+def test_dyca_eigenvalues_are_real_and_match_general_solver(oscillator_sources):
+    """DyCA's generalised eigenproblem is symmetric-definite: its eigenvalues
+    are real, in [0, 1] and decreasing, and equal those of the general
+    (nonsymmetric) solver, whose eigenvectors span the same directions."""
+    import scipy.linalg
+    from tsdr.determinism import DyCA
+    _, X = oscillator_sources
+    model = DyCA(n_components=4).fit(X)
+    ev = model.eigvals_
+    assert np.isrealobj(ev)
+    assert np.all((ev >= -1e-12) & (ev <= 1)) and np.all(np.diff(ev) <= 0)
+
+    # reference: the general solver on the same whitened matrices
+    Xw = (X - X.mean(0))
+    Xw = Xw @ np.linalg.inv(np.linalg.cholesky(np.cov(Xw, rowvar=False))).T
+    Xdot = np.gradient(Xw, axis=0, edge_order=1)
+    T = len(X)
+    C0, C1, C2 = Xw.T @ Xw / T, Xdot.T @ Xw / T, Xdot.T @ Xdot / T
+    lam = scipy.linalg.eig(C1 @ np.linalg.pinv(C0) @ C1.T, C2, right=False)
+    lam = np.sort(lam.real)[::-1]
+    np.testing.assert_allclose(ev, lam[lam <= 1], rtol=1e-8, atol=1e-12)

@@ -6,14 +6,130 @@
 # DIG - Dynamical Information Geometry
 # NLSA - Nonlinear Laplacian Spectral Analysis
 
+import numbers
+import warnings
+
 import numpy as np
 import scipy.linalg
 import scipy.spatial.distance
 from kneed import KneeLocator
 from sklearn.neighbors import NearestNeighbors
 
+from ._linalg import largest_entry_signs, sqrtm_psd
 from ._validation import check_input, check_n_components, check_window
 from ._whitening import fit_whitening
+
+
+###############################################################################
+###############################################################################
+# Distances between time-series windows (used by DMcov and DIG)
+###############################################################################
+###############################################################################
+
+# the distances between windows, and those that need positive definite 
+# (nonsingular) window covariances, i.e., windows of at least n_features + 1
+# samples
+WINDOW_DISTANCES = ('mean_mahalanobis', 'wasserstein', 'bhattacharyya', 
+                    'frobenius', 'geodesic')
+NEEDS_POSITIVE_DEFINITE = ('bhattacharyya', 'geodesic')
+
+
+def _check_distance(distance):
+    """Check the name of a window distance, and return it with the old name
+    'mahalanobis' replaced by 'mean_mahalanobis' (with a warning)."""
+
+    if distance == 'mahalanobis':
+        warnings.warn("distance='mahalanobis' compares only the means of the "
+                      "windows, and has been renamed 'mean_mahalanobis'; use "
+                      "that name (or a distance that also compares the window "
+                      "covariances, such as 'bhattacharyya').", 
+                      DeprecationWarning, stacklevel=3)
+        return 'mean_mahalanobis'
+
+    if distance not in WINDOW_DISTANCES:
+        raise ValueError(f"Unknown distance '{distance}'. Options are "
+                         + ", ".join(f"'{d}'" for d in WINDOW_DISTANCES) + ".")
+
+    return distance
+
+
+def _window_distance(Xi, Xj, distance):
+    """The distance d between two windows Xi and Xj of a time series (rows 
+    are time points), each summarised by its mean mu and covariance C.
+
+    'mean_mahalanobis': the Mahalanobis distance between the window means,
+        d^2 = (mu_i - mu_j)^T (C_i + C_j)^+ (mu_i - mu_j), as in Duque et al.
+        (2019), Eq. 6. The covariances only set the scale, so two windows 
+        with the same mean are at distance zero, whatever their covariances.
+    'wasserstein': the 2-Wasserstein distance between the Gaussians 
+        N(mu_i, C_i) and N(mu_j, C_j), 
+        d^2 = |mu_i - mu_j|^2 + tr(C_i + C_j - 2 (C_i^1/2 C_j C_i^1/2)^1/2).
+        It depends on the scale of the data (d^2 has the units of a variance).
+    'bhattacharyya': four times the Bhattacharyya distance between the 
+        Gaussians N(mu_i, C_i) and N(mu_j, C_j), 
+        d^2 = (mu_i - mu_j)^T (C_i + C_j)^-1 (mu_i - mu_j) 
+              + 2 log det((C_i + C_j) / 2) - log det C_i - log det C_j,
+        scaled so that it equals 'mean_mahalanobis' when C_i = C_j. Like 
+        'mean_mahalanobis', it does not change under an invertible linear 
+        transformation of the data.
+    'frobenius': the Frobenius norm of the difference of the covariances, 
+        d = ||C_i - C_j||_F (the means are ignored).
+    'geodesic': the affine-invariant Riemannian (geodesic) distance between 
+        the covariances, d = ||log(C_i^-1/2 C_j C_i^-1/2)||_F (the means are 
+        ignored).
+    """
+
+    mu_diff = Xi.mean(axis=0) - Xj.mean(axis=0)
+    Ci = np.atleast_2d(np.cov(Xi, rowvar=False))
+    Cj = np.atleast_2d(np.cov(Xj, rowvar=False))
+
+    if distance == 'mean_mahalanobis':
+
+        d2 = mu_diff @ np.linalg.pinv(Ci + Cj) @ mu_diff
+
+    elif distance == 'wasserstein':
+
+        Ci_root = sqrtm_psd(Ci)
+        d2 = mu_diff @ mu_diff + np.trace(Ci + Cj - 2 * sqrtm_psd(Ci_root @ Cj @ Ci_root))
+
+    elif distance == 'bhattacharyya':
+
+        _, logdet_mean = np.linalg.slogdet((Ci + Cj) / 2)
+        _, logdet_i = np.linalg.slogdet(Ci)
+        _, logdet_j = np.linalg.slogdet(Cj)
+        d2 = (mu_diff @ np.linalg.pinv(Ci + Cj) @ mu_diff
+              + 2 * logdet_mean - logdet_i - logdet_j)
+
+    elif distance == 'frobenius':
+
+        d2 = np.sum((Ci - Cj) ** 2)
+
+    elif distance == 'geodesic':
+
+        # the eigenvalues of C_i^-1/2 C_j C_i^-1/2 are the generalised 
+        # eigenvalues of (C_j, C_i)
+        lam = scipy.linalg.eigvalsh(Cj, Ci)
+        d2 = np.sum(np.log(lam) ** 2)
+
+    # rounding can make d2 slightly negative when the windows are (nearly) 
+    # identical
+    return np.sqrt(max(d2, 0.0))
+
+
+def _window_distance_matrix(X, window, step, distance):
+    """The matrix of distances between the windows X[i:i+window] of X that 
+    start at i = 0, step, 2*step, ... (all the windows that fit in X)."""
+
+    T, _ = X.shape
+    starts = range(0, T - window + 1, step)
+    G = np.zeros((len(starts), len(starts)))
+    for a, i in enumerate(starts):
+        for b, j in enumerate(starts):
+            if b > a:
+                G[a, b] = _window_distance(X[i:i + window,:], X[j:j + window,:], 
+                                           distance)
+
+    return G + G.T
 
 
 ###############################################################################
@@ -27,18 +143,21 @@ class DMcov():
     Diffusion maps using covariance distance (DMcov).
 
     DMcov is a nonlinear TSDR method for extracting components from a 
-    multivariate time series based on the distance between the covariance 
-    matrices of time-series segments.
+    multivariate time series based on the distances between time-series 
+    segments (windows), each summarised by its mean and covariance. The 
+    default distance, 'bhattacharyya', compares both the means and the 
+    covariances of the windows; 'mean_mahalanobis' compares only the means 
+    (the covariances set the scale), so changes in covariance alone are not 
+    detected.
 
-    The steps involved in DMcov are: (1) compute a square matrix of covariance
-    distances between time-series segments, (2) apply a Gaussian (i.e., RBF) 
-    kernel to the distance matrix to obtain W, (3) compute the diagonal matrix 
+    The steps involved in DMcov are: (1) compute a square matrix of distances
+    between time-series segments (windows), each summarised by its mean and 
+    covariance, (2) apply a Gaussian (i.e., RBF) kernel to the distance 
+    matrix to obtain W, (3) compute the diagonal matrix 
     D by summing across rows of W, (4) compute the normalised matrix D^(-1/2) W D^(-1/2)
     or the graph Laplacian L = D - W, (5) apply eigendecomposition to 
     the matrix from (4) and return the leading eigenvectors ranked by absolute
     eigenvalue (after discarding the first eigenvector).
-
-    Warning: The behaviour of this function has not been thoroughly tested.
 
     Reference: Coelho Rodrigues et al (2018) Multivariate time-series analysis 
     via manifold learning, IEEE Workshop on SSP
@@ -59,14 +178,22 @@ class DMcov():
 
     sigma: float
         The scale parameter of the Gaussian (radial basis function - RBF) 
-        kernel exp(-d^2 / sigma), where d is the covariance distance between 
-        two windows (sigma thus plays the role of a variance).
+        kernel exp(-d^2 / sigma), where d is the distance between two windows
+        (sigma thus plays the role of a variance).
         Default: 2.0.
 
     distance: str
-        Determines the covariance distance metric. Options include 
-        'mahalanobis', 'frobenius', and 'geodesic'.
-        Default: 'mahalanobis' (from Duque et al, 2019).
+        The distance between two windows, each summarised by its mean and 
+        covariance: 'mean_mahalanobis' (the Mahalanobis distance between the 
+        window means, Duque et al., 2019, which ignores differences in 
+        covariance), 'wasserstein' (2-Wasserstein distance between Gaussians),
+        'bhattacharyya' (Bhattacharyya distance between Gaussians), 
+        'frobenius' or 'geodesic' (distances between the covariances only, 
+        which ignore the means). 'bhattacharyya' and 'geodesic' need windows
+        of at least n_features + 1 samples. See _window_distance for the 
+        formulas. The old name 'mahalanobis' is accepted for 
+        'mean_mahalanobis', with a DeprecationWarning.
+        Default: 'bhattacharyya'.
 
     normalise: bool
         Whether to use the standard graph Laplacian L = D - W (False) or the
@@ -75,7 +202,7 @@ class DMcov():
     """
 
     def __init__(self, window, step, n_components=1, 
-                 sigma=2.0, distance='mahalanobis', normalise=True):
+                 sigma=2.0, distance='bhattacharyya', normalise=True):
 
         self.window = window
         self.step = step
@@ -83,47 +210,6 @@ class DMcov():
         self.sigma = sigma
         self.distance = distance
         self.normalise = normalise
-
-    def _spd_geodesic(self, A, B):
-        # ||log(A^-1/2 B A^-1/2)||_F via generalised eigenvalues of (B, A)
-        lam = scipy.linalg.eigvalsh(B, A)
-        return np.sqrt(np.sum(np.log(lam) ** 2))
-    
-    def _cov_distance(self, X, Y):
-
-        Cx = np.cov(X, rowvar=False)
-        Cy = np.cov(Y, rowvar=False)
-        mu_diff = (np.mean(X, axis=0) - np.mean(Y, axis=0)).reshape(-1,1)
-        
-        if self.distance == 'frobenius':
-
-            return np.linalg.norm(Cx - Cy)
-        
-        elif self.distance == 'geodesic':
-
-            return self._spd_geodesic(Cx, Cy)
-
-        elif self.distance == 'mahalanobis':
-            # Duque et al (2019) Eq. 6 form, using window means and
-            # within-window covariances. The quadratic form is d^2 already,
-            # so return its root since the kernel squares the distance.
-            # This is a simplification of Duque et al (2019) which works in
-            # histogram space
-            q = (mu_diff.T @ np.linalg.pinv(Cx + Cy) @ mu_diff)[0, 0]
-            return np.sqrt(max(q, 0.0))
-        
-    def _cov_distance_matrix(self, X):
-
-        T, _ = X.shape
-        # start indices of all windows that fit in the time series
-        indices = range(0, T - self.window + 1, self.step)
-        G = np.zeros((len(indices), len(indices)))
-        for i2, i in enumerate(indices):
-            for j2, j in enumerate(indices):
-                if j2 > i2:
-                    G[i2,j2] = self._cov_distance(X[i:i+self.window,:], 
-                                                  X[j:j+self.window,:])
-        return G + G.T
 
     def fit(self, X, y=None):
         """Fit the model to X
@@ -145,14 +231,12 @@ class DMcov():
         X = check_input(X)
         T, D = X.shape
 
-        if self.distance not in ('mahalanobis', 'frobenius', 'geodesic'):
-            raise ValueError(f"Unknown distance '{self.distance}'. Options are "
-                             "'mahalanobis', 'frobenius', and 'geodesic'.")
+        distance = _check_distance(self.distance)
 
         # windows of at least 2 samples for the window covariances, and of 
-        # at least D + 1 samples for the geodesic distance, which needs 
-        # positive definite (nonsingular) window covariances
-        if self.distance == 'geodesic':
+        # at least D + 1 samples for the distances that need positive 
+        # definite (nonsingular) window covariances
+        if distance in NEEDS_POSITIVE_DEFINITE:
             check_window(self.window, self.step, T, min_length=D + 1)
         else:
             check_window(self.window, self.step, T, min_length=2)
@@ -165,11 +249,11 @@ class DMcov():
         # mean centering
         X = X - np.mean(X, axis=0)
 
-        # compute covariance distances
-        W = self._cov_distance_matrix(X)
+        # distances between the windows
+        G = _window_distance_matrix(X, self.window, self.step, distance)
 
         # Gaussian kernel weights matrix
-        W = np.exp(-W**2/self.sigma)
+        W = np.exp(-G**2/self.sigma)
 
         # diagonal weights matrix
         D = np.diag(np.sum(W, axis=0))
@@ -201,6 +285,10 @@ class DMcov():
             # the leading eigenvectors have the smallest eigenvalues, and the
             # first eigenvector (eigenvalue 0) is the trivial one
             self.components = eigvecs[:,1:1+self.n_components]
+
+        # fix the arbitrary sign of each component so that its value of
+        # largest magnitude is positive
+        self.components = self.components * largest_entry_signs(self.components)
 
         return self
 
@@ -240,18 +328,25 @@ class DIG():
     Dynamical Information Geometry (DIG).
 
     DIG is a nonlinear TSDR method for extracting components from a 
-    multivariate time series based on the distance between the covariance 
-    matrices of time-series segments.
+    multivariate time series based on the distances between time-series 
+    segments (windows), each summarised by its mean and covariance. With the
+    default distance, 'mean_mahalanobis', only the window means are compared
+    (the covariances set the scale), so changes in covariance alone are not 
+    detected; the 'wasserstein' and 'bhattacharyya' distances compare both.
 
-    The steps involved in DIG are: (1) compute a square matrix of covariance
-    distances between time-series segments, (2) apply an adaptive Gaussian 
-    (i.e., RBF) kernel to the distance matrix to obtain W, (3) normalise the 
+    The steps involved in DIG are: (1) compute a square matrix of distances 
+    between time-series segments (windows), each summarised by its mean and 
+    covariance, (2) apply an adaptive Gaussian (i.e., RBF) kernel to the 
+    squared distances to obtain W, (3) normalise the 
     columns of W to yield a Markovian matrix M of transition probabilities, 
     (4) compute a time scale tau using von Neumann Entropy (VNE), (5) compute 
     the tau-step diffusion probabilities M^tau, (6) compute information 
     distances D for M^tau, and (7) apply multidimensional scaling (MDS) to D.
 
-    Warning: The behaviour of this function has not been thoroughly tested.
+    Note: the distances and the recovery of known latent structure are 
+    tested, but the von Neumann entropy timescale and the information 
+    distances are tested only end to end, not against a reference 
+    implementation.
 
     Reference: Duque et al (2019) Visualizing high dimensional dynamical 
     processes, IEEE Workshop on MLSP
@@ -276,16 +371,29 @@ class DIG():
         Default: 5.
 
     alpha: float
-        The exponent to use in the adaptive Gaussian kernel.
+        The exponent to use in the adaptive Gaussian kernel 
+        exp(-(d^2 / d_k^2)^alpha), where d is the distance between two 
+        windows and d_k the distance to the knn-th nearest neighbour. The 
+        kernel is applied to the squared distance d^2, the quadratic form of
+        Duque et al. (2019), Eq. 6 (for distance='mean_mahalanobis').
         Default: 10.0.
 
     tmax: int
         The maximum number of diffusion steps used for the estimation of
         time scale via von Neumann entropy.
+        Default: 50.
+
+    distance: str
+        The distance between two windows, as in DMcov: 'mean_mahalanobis' 
+        (the Mahalanobis distance between the window means, Duque et al., 
+        2019, which ignores differences in covariance), 'wasserstein', 
+        'bhattacharyya', 'frobenius' or 'geodesic' (see DMcov and 
+        _window_distance).
+        Default: 'mean_mahalanobis'.
     """
 
     def __init__(self, window, step, n_components=1, 
-                 knn=5, alpha=10.0, tmax=50):
+                 knn=5, alpha=10.0, tmax=50, distance='mean_mahalanobis'):
 
         self.window = window
         self.step = step
@@ -293,28 +401,8 @@ class DIG():
         self.k = knn
         self.alpha = alpha
         self.tmax = tmax
+        self.distance = distance
 
-    def _cov_distance(self, X, Y):
-
-        Cx = np.cov(X, rowvar=False)
-        Cy = np.cov(Y, rowvar=False)
-        mu_diff = (X.mean(axis=0) - Y.mean(axis=0)).reshape(-1, 1)
-
-        return (mu_diff.T @ np.linalg.pinv(Cx + Cy) @ mu_diff)[0, 0] 
-        
-    def _cov_distance_matrix(self, X):
-
-        T, _ = X.shape
-        # start indices of all windows that fit in the time series
-        indices = range(0, T - self.window + 1, self.step)
-        G = np.zeros((len(indices), len(indices)))
-        for i2, i in enumerate(indices):
-            for j2, j in enumerate(indices):
-                if j2 > i2:
-                    G[i2,j2] = self._cov_distance(X[i:i+self.window,:], 
-                                                  X[j:j+self.window,:])
-        return G + G.T
-    
     # adaptive Gaussian kernel
     def _adaptive_gaussian_kernel(self, G):
 
@@ -362,9 +450,23 @@ class DIG():
         eigenvals, eigenvecs = np.linalg.eigh(K)
         eigenvals_sorted = eigenvals.argsort()[::-1]
         idxs = eigenvals_sorted[:self.n_components]
-        Lambda = np.diag(eigenvals[idxs])
+        Lambda = eigenvals[idxs]
         W = eigenvecs[:, idxs]
-        return (np.sqrt(Lambda) @ W.T).T
+
+        # the information distances need not be Euclidean, so K can have 
+        # negative eigenvalues, whose square roots are not real: set them to
+        # zero (so that those components are zero), with a warning unless 
+        # they are zero up to rounding (as K always has a zero eigenvalue)
+        tol = 1e-10 * np.max(np.abs(eigenvals))
+        if np.any(Lambda < -tol):
+            warnings.warn(f"Only {np.sum(eigenvals > tol)} of the {N} eigenvalues "
+                          "of the multidimensional scaling are positive, so "
+                          f"{np.sum(Lambda < -tol)} of the {self.n_components} "
+                          "components are set to zero; consider reducing "
+                          "n_components.", RuntimeWarning)
+        Lambda = np.clip(Lambda, 0.0, None)
+
+        return W * np.sqrt(Lambda)
 
     def fit(self, X, y=None):
         """Fit the model to X
@@ -384,21 +486,29 @@ class DIG():
         """
 
         X = check_input(X)
-        T, _ = X.shape
+        T, D = X.shape
 
-        # windows of at least 2 samples for the window covariances
-        check_window(self.window, self.step, T, min_length=2)
+        distance = _check_distance(self.distance)
+
+        # windows of at least 2 samples for the window covariances, and of 
+        # at least D + 1 samples for the distances that need positive 
+        # definite (nonsingular) window covariances
+        if distance in NEEDS_POSITIVE_DEFINITE:
+            check_window(self.window, self.step, T, min_length=D + 1)
+        else:
+            check_window(self.window, self.step, T, min_length=2)
 
         # multidimensional scaling of the n_windows x n_windows information
         # distances gives at most n_windows components
         n_windows = (T - self.window) // self.step + 1
         check_n_components(self.n_components, max_components=n_windows)
 
-        # compute covariance distances
-        W = self._cov_distance_matrix(X)
+        # distances between the windows
+        G = _window_distance_matrix(X, self.window, self.step, distance)
 
-        # Gaussian kernel weights matrix
-        W = self._adaptive_gaussian_kernel(W)
+        # adaptive Gaussian kernel weights matrix, applied to the squared 
+        # distances (see alpha)
+        W = self._adaptive_gaussian_kernel(G**2)
 
         # normalise the columns: since W is symmetric, W.sum(axis=1) are also
         # the column sums, so each column of M sums to one (column j holds 
@@ -416,6 +526,10 @@ class DIG():
         D = self._information_distance(Mtau)
 
         self.components = self._mds(D)
+
+        # fix the arbitrary sign of each component so that its value of
+        # largest magnitude is positive
+        self.components = self.components * largest_entry_signs(self.components)
 
         return self
 
@@ -509,7 +623,7 @@ class NLSA():
 
     n_eigenfunctions: int
         The number of Laplacian eigenfunctions (l), which must be at least 
-        n_components.
+        n_components and at most n_samples - q.
         Default: 20.
 
     whiten: bool
@@ -558,7 +672,19 @@ class NLSA():
         """
 
         X = check_input(X)
-        _, D = X.shape
+        T, D = X.shape
+
+        # the embedding has T - q + 1 rows, of which the s = T - q with a 
+        # preceding row are used, so that 1 <= q <= T - 2 leaves s >= 2 
+        # samples, and there are at most s eigenfunctions
+        if not isinstance(self.q, numbers.Integral) or not 1 <= self.q <= T - 2:
+            raise ValueError(f"q must be an integer between 1 and n_samples - 2 "
+                             f"= {T - 2} (got {self.q!r}).")
+        if (not isinstance(self.n_eigenfunctions, numbers.Integral) 
+                or not 1 <= self.n_eigenfunctions <= T - self.q):
+            raise ValueError(f"n_eigenfunctions must be an integer between 1 and "
+                             f"n_samples - q = {T - self.q} (got "
+                             f"{self.n_eigenfunctions!r}).")
 
         # the temporal modes are the right singular vectors of the 
         # (q * D) x n_eigenfunctions linear operator A
@@ -585,6 +711,19 @@ class NLSA():
         xi = np.linalg.norm(E[1:,:] - E[:-1,:], axis=1)
         E = E[1:,:]
         s = E.shape[0]
+
+        # a repeated embedded sample has zero local velocity, by which the 
+        # kernel would divide: use the smallest positive velocity instead,
+        # with a warning
+        if np.all(xi == 0):
+            raise ValueError("The time-lagged embedding of X is constant (all "
+                             "local velocities are zero).")
+        if np.any(xi == 0):
+            warnings.warn(f"{np.sum(xi == 0)} embedded samples repeat the "
+                          "previous one (zero local velocity); their velocity "
+                          f"is set to the smallest positive one, {xi[xi > 0].min():.3g}.",
+                          RuntimeWarning)
+            xi = np.where(xi == 0, xi[xi > 0].min(), xi)
 
         # Gaussian kernel on the b nearest neighbours of each sample, scaled 
         # by the local velocities, and symmetrised, Algorithm S2 lines 6-22
@@ -622,6 +761,10 @@ class NLSA():
         _, sigma, Vt = np.linalg.svd(A, full_matrices=False)
         self.singular_values_ = sigma[:self.n_components]
         self.components = phi @ Vt.T[:,:self.n_components]
+
+        # fix the arbitrary sign of each component so that its value of
+        # largest magnitude is positive
+        self.components = self.components * largest_entry_signs(self.components)
 
         return self
 

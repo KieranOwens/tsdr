@@ -1,6 +1,7 @@
 # Shared checks of the inputs and parameters of the tsdr methods
 
 import numbers
+import warnings
 
 import numpy as np
 from sklearn.utils import check_array
@@ -89,3 +90,17 @@ def check_window(window, step, n_samples, min_length=2):
 
     if not isinstance(step, numbers.Integral) or isinstance(step, bool) or step < 1:
         raise ValueError(f"step must be a positive integer (got {step!r}).")
+
+
+def warn_if_samples_dropped(n_samples, n_windows, name):
+    """Warn if n_samples is not a multiple of n_windows: the contiguous 
+    windows have n_samples // n_windows samples each, so the last 
+    n_samples % n_windows samples are not used."""
+
+    n_dropped = n_samples % n_windows
+    if n_dropped > 0:
+        warnings.warn(f"{name} splits the {n_samples} samples into {n_windows} "
+                      f"windows of {n_samples // n_windows} samples, so the last "
+                      f"{n_dropped} samples are not used (choose n_windows to "
+                      "divide n_samples to use them all).", UserWarning, 
+                      stacklevel=3)

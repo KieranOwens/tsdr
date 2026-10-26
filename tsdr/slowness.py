@@ -18,6 +18,7 @@ from sklearn.decomposition import PCA
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.utils import check_random_state
 
+from ._linalg import largest_entry_signs
 from ._validation import check_input
 from ._whitening import fit_whitening
 
@@ -53,7 +54,11 @@ class SFA():
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
         The linear transformation that yields the SFA components when applied 
-        to the input time series X.
+        to the centred time series X - mean_.
+
+    mean_: ndarray, shape (n_features,)
+        The mean of the fitted time series, which transform subtracts
+        from X before applying linear_transform_.
 
     eigvals_: ndarray, shape (n_features,)
         The variance of the temporal derivative (difference) of each 
@@ -87,6 +92,10 @@ class SFA():
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
+        # the mean of X, which transform subtracts (the components are
+        # fitted to the centred, whitened data)
+        self.mean_ = pca_white.mean_
+
         # whiten the data
         Xw = pca_white.transform(X)
 
@@ -104,6 +113,11 @@ class SFA():
         transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
         transform2 = pca_diff.components_.T
         self.linear_transform_ = (transform1 @ transform2)[:,-1:-(self.n_components+1):-1]
+
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
 
         return self
 
@@ -124,7 +138,8 @@ class SFA():
 
         X = check_input(X)
 
-        return X @ self.linear_transform_
+        # centre X with the mean of the fitted data, as in fit
+        return (X - self.mean_) @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
         """Fit the model to X and apply dimension reduction to X.
@@ -211,7 +226,7 @@ class BioSFA():
         weights W. Pass an int for reproducible results across calls (the
         global NumPy random state is then left unchanged). If None, the
         global NumPy random state is used.
-        Default: None.
+        Default: 0.
 
     tol: float
         A ConvergenceWarning is raised if the relative change in the weights
@@ -223,7 +238,11 @@ class BioSFA():
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
         The linear transformation that yields the BioSFA components when 
-        applied to the input time series X.
+        applied to the centred time series X - mean_.
+
+    mean_: ndarray, shape (n_features,)
+        The mean of the fitted time series, which transform subtracts
+        from X before applying linear_transform_.
 
     eigvals_: ndarray, shape (n_components,)
         The variance of the temporal derivative of each (unit-variance) 
@@ -231,7 +250,7 @@ class BioSFA():
     """
 
     def __init__(self, n_components=1, n_iters=1000, lr=0.1, tau=1.0,
-                 random_state=None, tol=1e-4):
+                 random_state=0, tol=1e-4):
 
         self.n_components = n_components
         self.n_iters = n_iters
@@ -265,6 +284,11 @@ class BioSFA():
                              "definite (Lipshutz et al., 2020).")
 
         pca_white = fit_whitening(X)
+
+        # the mean of X, which transform subtracts (the components are
+        # fitted to the centred, whitened data)
+        self.mean_ = pca_white.mean_
+
         Xw = pca_white.transform(X)
 
         T, D = Xw.shape
@@ -321,6 +345,11 @@ class BioSFA():
         transform2 = V @ R
         self.linear_transform_ = transform1 @ transform2
 
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
+
         return self
 
     def transform(self, X):
@@ -340,7 +369,8 @@ class BioSFA():
 
         X = check_input(X)
 
-        return X @ self.linear_transform_
+        # centre X with the mean of the fitted data, as in fit
+        return (X - self.mean_) @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
         """Fit the model to X and apply dimension reduction to X.
@@ -432,20 +462,24 @@ class ISFA():
         int for reproducible results across calls (the global NumPy random 
         state is then left unchanged). If None, the global NumPy random state 
         is used.
-        Default: None.
+        Default: 0.
 
     Attributes
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
         The linear transformation that yields the ISFA components when applied 
-        to the input time series X.
+        to the centred time series X - mean_.
+
+    mean_: ndarray, shape (n_features,)
+        The mean of the fitted time series, which transform subtracts
+        from X before applying linear_transform_.
 
     objective_: float
         The value of the ISFA objective at the solution.
     """
 
     def __init__(self, n_components=1, lags=10, b_ica=1.0, b_sfa=1.0, 
-                 max_iters=100, tol=1e-8, random_state=None):
+                 max_iters=100, tol=1e-8, random_state=0):
 
         self.n_components = n_components
         self.lags = lags
@@ -526,6 +560,10 @@ class ISFA():
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
+        # the mean of X, which transform subtracts (the components are
+        # fitted to the centred, whitened data)
+        self.mean_ = pca_white.mean_
+
         # whiten the data
         Xw = pca_white.transform(X)
 
@@ -592,6 +630,11 @@ class ISFA():
         transform2 = Q[:,order]
         self.linear_transform_ = transform1 @ transform2
 
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
+
         return self
 
     def transform(self, X):
@@ -611,7 +654,8 @@ class ISFA():
 
         X = check_input(X)
 
-        return X @ self.linear_transform_
+        # centre X with the mean of the fitted data, as in fit
+        return (X - self.mean_) @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
         """Fit the model to X and apply dimension reduction to X.
@@ -695,13 +739,17 @@ class SICA():
         Controls the random initialisation. Pass an int for reproducible 
         results across calls (the global NumPy random state is then left 
         unchanged). If None, the global NumPy random state is used.
-        Default: None.
+        Default: 0.
 
     Attributes
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
         The linear transformation that yields the SICA components when applied 
-        to the input time series X.
+        to the centred time series X - mean_.
+
+    mean_: ndarray, shape (n_features,)
+        The mean of the fitted time series, which transform subtracts
+        from X before applying linear_transform_.
 
     slowness_: ndarray, shape (n_components,)
         The slowness (variance of the temporal derivative) of each 
@@ -709,7 +757,7 @@ class SICA():
     """
 
     def __init__(self, n_components=1, a=1.0, max_iters=200, tol=1e-8, 
-                 random_state=None):
+                 random_state=0):
 
         self.n_components = n_components
         self.a = a
@@ -738,6 +786,10 @@ class SICA():
 
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
+
+        # the mean of X, which transform subtracts (the components are
+        # fitted to the centred, whitened data)
+        self.mean_ = pca_white.mean_
 
         # whiten the data
         Z = pca_white.transform(X)
@@ -808,6 +860,11 @@ class SICA():
         transform2 = W[:,order]
         self.linear_transform_ = transform1 @ transform2
 
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
+
         return self
 
     def transform(self, X):
@@ -827,7 +884,8 @@ class SICA():
 
         X = check_input(X)
 
-        return X @ self.linear_transform_
+        # centre X with the mean of the fitted data, as in fit
+        return (X - self.mean_) @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
         """Fit the model to X and apply dimension reduction to X.

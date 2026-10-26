@@ -7,7 +7,7 @@ import scipy.stats
 from sklearn.exceptions import ConvergenceWarning
 
 from tsdr._whitening import fit_whitening
-from tsdr.nonstationarity import (ASSA, SSAsave, SSAcor, BSSnonstat,
+from tsdr.nonstationarity import (ASSA, SSAsir, SSAsave, SSAcor, BSSnonstat,
                                   WaSSAf, WaSSAr)
 
 from helpers import corr2, random_mix
@@ -184,3 +184,49 @@ def test_assa_truthy_nonstationary_sets_eigvals(variance_sources):
     b = ASSA(n_components=2, nonstationary=True).fit(X)
     np.testing.assert_array_equal(a.eigvals_, b.eigvals_)
     np.testing.assert_array_equal(a.linear_transform_, b.linear_transform_)
+
+
+@pytest.mark.parametrize("method", [WaSSAf, WaSSAr])
+def test_wassa_is_real_with_singular_window_covariances(method):
+    """A channel that is constant in half of the windows makes their
+    covariances singular, for which scipy.linalg.sqrtm returns complex values
+    (and WaSSAf and WaSSAr used to fail); the symmetric square root keeps the
+    computation real."""
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(400, 4)) * np.linspace(1, 3, 400)[:, None]
+    X[:200, 3] = 0.0
+    model = method(n_components=2, n_windows=10).fit(X)
+    Y = model.transform(X)
+    assert np.isrealobj(model.linear_transform_) and np.isrealobj(Y)
+    assert np.all(np.isfinite(Y))
+
+
+def test_wassar_is_real_with_short_windows():
+    """Windows with fewer samples than channels have singular covariances."""
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(40, 6)) * np.linspace(1, 3, 40)[:, None]
+    Y = WaSSAr(n_components=2, n_windows=8).fit_transform(X)
+    assert np.isrealobj(Y) and np.all(np.isfinite(Y))
+
+
+def test_wassaf_needs_windows_longer_than_n_features():
+    rng = np.random.default_rng(0)
+    with pytest.raises(ValueError, match="n_windows"):
+        WaSSAf(n_windows=8).fit(rng.normal(size=(40, 6)))
+
+
+WINDOW_METHODS = [ASSA, SSAsir, SSAsave, SSAcor, WaSSAf, WaSSAr]
+
+
+@pytest.mark.parametrize("method", WINDOW_METHODS)
+def test_window_methods_warn_when_samples_are_dropped(method):
+    """The windows have n_samples // n_windows samples each, so with 1003
+    samples and 10 windows the last 3 samples are not used, with a warning
+    (and with 1000 samples, no warning)."""
+    import warnings
+    X = np.random.default_rng(0).normal(size=(1003, 3))
+    with pytest.warns(UserWarning, match="last 3 samples are not used"):
+        method(n_windows=10).fit(X)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        method(n_windows=10).fit(X[:1000])

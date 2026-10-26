@@ -13,11 +13,12 @@
 import warnings
 
 import numpy as np
-import scipy
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.utils import check_random_state
 
-from ._validation import check_input, check_lag, check_n_windows
+from ._linalg import largest_entry_signs, sqrtm_psd
+from ._validation import (check_input, check_lag, check_n_windows,
+                          warn_if_samples_dropped)
 from ._whitening import fit_whitening
 
 ###############################################################################
@@ -52,6 +53,8 @@ class ASSA():
     n_windows: int
         The number of contiguous windows used for the approximation of Gaussian
         KL divergence.
+        The windows have n_samples // n_windows samples each, so the last
+        n_samples % n_windows samples are not used (with a UserWarning).
         Default: 10.
 
     nonstationary: bool
@@ -63,7 +66,11 @@ class ASSA():
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
         The linear transformation that yields the ASSA components when applied 
-        to the input time series X.
+        to the centred time series X - mean_.
+
+    mean_: ndarray, shape (n_features,)
+        The mean of the fitted time series, which transform subtracts
+        from X before applying linear_transform_.
 
     eigvals_: ndarray, shape (n_features,)
         The eigenvalues lambda of S, in the same order as the components 
@@ -127,11 +134,18 @@ class ASSA():
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
+        # the mean of X, which transform subtracts (the components are
+        # fitted to the centred, whitened data)
+        self.mean_ = pca_white.mean_
+
         # whiten the data
         Xw = pca_white.transform(X)
 
         # windows of at least 2 samples for the window covariances
         check_n_windows(self.n_windows, X.shape[0], min_length=2)
+
+        # warn if the last n_samples % n_windows samples are not used
+        warn_if_samples_dropped(X.shape[0], self.n_windows, 'ASSA')
 
         # get matrix S
         S = self._compute_S(Xw)
@@ -156,6 +170,11 @@ class ASSA():
             transform2 = eigvecs_sorted[:,:self.n_components]
         self.linear_transform_ = (transform1 @ transform2)
 
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
+
         return self
 
     def transform(self, X):
@@ -175,7 +194,8 @@ class ASSA():
 
         X = check_input(X)
 
-        return X @ self.linear_transform_
+        # centre X with the mean of the fitted data, as in fit
+        return (X - self.mean_) @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
         """Fit the model to X and apply dimension reduction to X.
@@ -232,6 +252,8 @@ class SSAsir():
 
     n_windows: int
         The number of contiguous windows used for computing means.
+        The windows have n_samples // n_windows samples each, so the last
+        n_samples % n_windows samples are not used (with a UserWarning).
         Default: 10.
 
     nonstationary: bool
@@ -243,7 +265,11 @@ class SSAsir():
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
         The linear transformation that yields the SSAsir components when 
-        applied to the input time series X.
+        applied to the centred time series X - mean_.
+
+    mean_: ndarray, shape (n_features,)
+        The mean of the fitted time series, which transform subtracts
+        from X before applying linear_transform_.
     """
 
     def __init__(self, n_components=1, n_windows=10, nonstationary=True):
@@ -289,11 +315,18 @@ class SSAsir():
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
+        # the mean of X, which transform subtracts (the components are
+        # fitted to the centred, whitened data)
+        self.mean_ = pca_white.mean_
+
         # whiten the data
         Xw = pca_white.transform(X)
 
         # windows of at least 1 sample for the window means
         check_n_windows(self.n_windows, X.shape[0], min_length=1)
+
+        # warn if the last n_samples % n_windows samples are not used
+        warn_if_samples_dropped(X.shape[0], self.n_windows, 'SSAsir')
 
         # get matrix Mm
         Mm = self._compute_Mm(Xw)
@@ -309,6 +342,11 @@ class SSAsir():
         else:
             transform2 = eigvecs_sorted[:,:self.n_components]
         self.linear_transform_ = (transform1 @ transform2)
+
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
 
         return self
 
@@ -329,7 +367,8 @@ class SSAsir():
 
         X = check_input(X)
 
-        return X @ self.linear_transform_
+        # centre X with the mean of the fitted data, as in fit
+        return (X - self.mean_) @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
         """Fit the model to X and apply dimension reduction to X.
@@ -387,6 +426,8 @@ class SSAsave():
 
     n_windows: int
         The number of contiguous windows used for computing covariance.
+        The windows have n_samples // n_windows samples each, so the last
+        n_samples % n_windows samples are not used (with a UserWarning).
         Default: 10.
 
     nonstationary: bool
@@ -398,7 +439,11 @@ class SSAsave():
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
         The linear transformation that yields the SSAsave components when 
-        applied to the input time series X.
+        applied to the centred time series X - mean_.
+
+    mean_: ndarray, shape (n_features,)
+        The mean of the fitted time series, which transform subtracts
+        from X before applying linear_transform_.
     """
 
     def __init__(self, n_components=1, n_windows=10, nonstationary=True):
@@ -449,11 +494,18 @@ class SSAsave():
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
+        # the mean of X, which transform subtracts (the components are
+        # fitted to the centred, whitened data)
+        self.mean_ = pca_white.mean_
+
         # whiten the data
         Xw = pca_white.transform(X)
 
         # windows of at least 2 samples for the window covariances
         check_n_windows(self.n_windows, X.shape[0], min_length=2)
+
+        # warn if the last n_samples % n_windows samples are not used
+        warn_if_samples_dropped(X.shape[0], self.n_windows, 'SSAsave')
 
         # get matrix Mv
         Mv = self._compute_Mv(Xw)
@@ -469,6 +521,11 @@ class SSAsave():
         else:
             transform2 = eigvecs_sorted[:,:self.n_components]
         self.linear_transform_ = (transform1 @ transform2)
+
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
 
         return self
 
@@ -489,7 +546,8 @@ class SSAsave():
 
         X = check_input(X)
 
-        return X @ self.linear_transform_
+        # centre X with the mean of the fitted data, as in fit
+        return (X - self.mean_) @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
         """Fit the model to X and apply dimension reduction to X.
@@ -552,6 +610,8 @@ class SSAcor():
     n_windows: int
         The number of contiguous windows used for computing time-lagged 
         autocorrelation.
+        The windows have n_samples // n_windows samples each, so the last
+        n_samples % n_windows samples are not used (with a UserWarning).
         Default: 10.
 
     nonstationary: bool
@@ -563,7 +623,11 @@ class SSAcor():
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
         The linear transformation that yields the SSAcor components when 
-        applied to the input time series X.
+        applied to the centred time series X - mean_.
+
+    mean_: ndarray, shape (n_features,)
+        The mean of the fitted time series, which transform subtracts
+        from X before applying linear_transform_.
     """
 
     def __init__(self, n_components=1, lag=1, n_windows=10, 
@@ -622,12 +686,19 @@ class SSAcor():
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
+        # the mean of X, which transform subtracts (the components are
+        # fitted to the centred, whitened data)
+        self.mean_ = pca_white.mean_
+
         # whiten the data
         Xw = pca_white.transform(X)
 
         # windows of at least lag + 2 samples for the window autocovariances
         check_lag(self.lag, X.shape[0])
         check_n_windows(self.n_windows, X.shape[0], min_length=self.lag + 2)
+
+        # warn if the last n_samples % n_windows samples are not used
+        warn_if_samples_dropped(X.shape[0], self.n_windows, 'SSAcor')
 
         # get matrix Mtau
         Mtau = self._compute_Mtau(Xw)
@@ -643,6 +714,11 @@ class SSAcor():
         else:
             transform2 = eigvecs_sorted[:,:self.n_components]
         self.linear_transform_ = (transform1 @ transform2)
+
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
 
         return self
 
@@ -663,7 +739,8 @@ class SSAcor():
 
         X = check_input(X)
 
-        return X @ self.linear_transform_
+        # centre X with the mean of the fitted data, as in fit
+        return (X - self.mean_) @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
         """Fit the model to X and apply dimension reduction to X.
@@ -722,6 +799,8 @@ class WaSSAf():
     n_windows: int
         The number of contiguous windows used for the approximation of 
         Wasserstein distance.
+        The windows have n_samples // n_windows samples each, so the last
+        n_samples % n_windows samples are not used (with a UserWarning).
         Default: 10.
 
     epsilon: float
@@ -745,7 +824,11 @@ class WaSSAf():
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
         The linear transformation that yields the WaSSAf components when 
-        applied to the input time series X.
+        applied to the centred time series X - mean_.
+
+    mean_: ndarray, shape (n_features,)
+        The mean of the fitted time series, which transform subtracts
+        from X before applying linear_transform_.
 
     frechet_mean_: ndarray, shape (n_features, n_features)
         The Frechet mean (Wasserstein-2 barycenter) of the window covariance 
@@ -779,7 +862,9 @@ class WaSSAf():
             Xc = Xi - np.mean(Xi, axis=0)
             C0i = (1/(Ti - 1)) * (Xc.T @ Xc)
             C0_list.append(C0i)
-            S_r_root += (1/self.n_windows) * scipy.linalg.sqrtm(C0i)
+            # (sqrtm_psd gives the real, symmetric square root of a
+            # covariance matrix, even a singular one)
+            S_r_root += (1/self.n_windows) * sqrtm_psd(C0i)
 
         return S_r_root, C0_list
 
@@ -800,12 +885,11 @@ class WaSSAf():
         iter = 0
         while delta >= self.epsilon and iter < self.max_iters:
             iter += 1
-            Sw_root = np.real(scipy.linalg.sqrtm(Sw))
+            Sw_root = sqrtm_psd(Sw)
             Sw_root_inv = np.linalg.inv(Sw_root)
             Ti = np.zeros((D, D))
             for C0i in C0_list:
-                Ti += Sw_root_inv @ np.real(
-                    scipy.linalg.sqrtm(Sw_root @ C0i @ Sw_root)) @ Sw_root_inv
+                Ti += Sw_root_inv @ sqrtm_psd(Sw_root @ C0i @ Sw_root) @ Sw_root_inv
             Ti = Ti / self.n_windows
             Snew = Ti @ Sw @ Ti
             delta = np.linalg.norm(Sw - Snew)
@@ -831,9 +915,9 @@ class WaSSAf():
             # only through the mu_i mu_i^T term)
             Xc = Xi - np.mean(Xi, axis=0)
             C0i = (1/(Ti - 1)) * (Xc.T @ Xc)
-            C0i_root = scipy.linalg.sqrtm(C0i)
+            C0i_root = sqrtm_psd(C0i)
 
-            inner_term = scipy.linalg.sqrtm(C0i_root @ Sw @ C0i_root)
+            inner_term = sqrtm_psd(C0i_root @ Sw @ C0i_root)
             S += np.outer(mu_i, mu_i) + C0i + Sw - 2 * inner_term
 
         return S
@@ -860,11 +944,20 @@ class WaSSAf():
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
+        # the mean of X, which transform subtracts (the components are
+        # fitted to the centred, whitened data)
+        self.mean_ = pca_white.mean_
+
         # whiten the data
         Xw = pca_white.transform(X)
 
-        # windows of at least 2 samples for the window covariances
-        check_n_windows(self.n_windows, X.shape[0], min_length=2)
+        # windows of at least D + 1 samples, so that the window covariances,
+        # and so their Frechet mean (which Algorithm 1 inverts), are 
+        # nonsingular
+        check_n_windows(self.n_windows, X.shape[0], min_length=X.shape[1] + 1)
+
+        # warn if the last n_samples % n_windows samples are not used
+        warn_if_samples_dropped(X.shape[0], self.n_windows, 'WaSSAf')
 
         # get matrix S
         S = self._compute_S(Xw)
@@ -880,6 +973,11 @@ class WaSSAf():
         else:
             transform2 = eigvecs_sorted[:,:self.n_components]
         self.linear_transform_ = (transform1 @ transform2)
+
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
 
         return self
 
@@ -900,7 +998,8 @@ class WaSSAf():
 
         X = check_input(X)
 
-        return X @ self.linear_transform_
+        # centre X with the mean of the fitted data, as in fit
+        return (X - self.mean_) @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
         """Fit the model to X and apply dimension reduction to X.
@@ -959,6 +1058,8 @@ class WaSSAr():
     n_windows: int
         The number of contiguous windows used for the approximation of 
         Wasserstein distance.
+        The windows have n_samples // n_windows samples each, so the last
+        n_samples % n_windows samples are not used (with a UserWarning).
         Default: 10.
 
     nonstationary: bool
@@ -970,7 +1071,11 @@ class WaSSAr():
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
         The linear transformation that yields the WaSSAr components when 
-        applied to the input time series X.
+        applied to the centred time series X - mean_.
+
+    mean_: ndarray, shape (n_features,)
+        The mean of the fitted time series, which transform subtracts
+        from X before applying linear_transform_.
     """
 
     def __init__(self, n_components=1, n_windows=10, nonstationary=True):
@@ -995,7 +1100,9 @@ class WaSSAr():
             # only through the mu_i mu_i^T term)
             Xc = Xi - np.mean(Xi, axis=0)
             C0i = (1/(Ti - 1)) * (Xc.T @ Xc)
-            S_r_root += (1/self.n_windows) * scipy.linalg.sqrtm(C0i)
+            # (sqrtm_psd gives the real, symmetric square root of a
+            # covariance matrix, even a singular one)
+            S_r_root += (1/self.n_windows) * sqrtm_psd(C0i)
 
         # Construct matrix S
         S = np.zeros((D, D))
@@ -1010,7 +1117,7 @@ class WaSSAr():
             Xc = Xi - np.mean(Xi, axis=0)
             C0i = (1/(Ti - 1)) * (Xc.T @ Xc)
 
-            inner_term = scipy.linalg.sqrtm(C0i) - S_r_root
+            inner_term = sqrtm_psd(C0i) - S_r_root
             S += np.outer(mu_i, mu_i) + inner_term @ inner_term.T
 
         return S
@@ -1037,11 +1144,18 @@ class WaSSAr():
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
+        # the mean of X, which transform subtracts (the components are
+        # fitted to the centred, whitened data)
+        self.mean_ = pca_white.mean_
+
         # whiten the data
         Xw = pca_white.transform(X)
 
         # windows of at least 2 samples for the window covariances
         check_n_windows(self.n_windows, X.shape[0], min_length=2)
+
+        # warn if the last n_samples % n_windows samples are not used
+        warn_if_samples_dropped(X.shape[0], self.n_windows, 'WaSSAr')
 
         # get matrix S
         S = self._compute_S(Xw)
@@ -1057,6 +1171,11 @@ class WaSSAr():
         else:
             transform2 = eigvecs_sorted[:,:self.n_components]
         self.linear_transform_ = (transform1 @ transform2)
+
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
 
         return self
 
@@ -1077,7 +1196,8 @@ class WaSSAr():
 
         X = check_input(X)
 
-        return X @ self.linear_transform_
+        # centre X with the mean of the fitted data, as in fit
+        return (X - self.mean_) @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
         """Fit the model to X and apply dimension reduction to X.
@@ -1158,7 +1278,7 @@ class BSSnonstat():
         vectors w. Pass an int for reproducible results across calls (the
         global NumPy random state is then left unchanged). If None, the
         global NumPy random state is used.
-        Default: None.
+        Default: 0.
 
     tol: float
         A ConvergenceWarning is raised if the change in a kept projection 
@@ -1170,10 +1290,14 @@ class BSSnonstat():
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
         The linear transformation that yields the BSSnonstat components when 
-        applied to the input time series X.
+        applied to the centred time series X - mean_.
+
+    mean_: ndarray, shape (n_features,)
+        The mean of the fitted time series, which transform subtracts
+        from X before applying linear_transform_.
     """
 
-    def __init__(self, n_components=1, lag=1, max_iters=100, random_state=None,
+    def __init__(self, n_components=1, lag=1, max_iters=100, random_state=0,
                  n_init=5, tol=1e-6):
 
         self.n_components = n_components
@@ -1206,6 +1330,10 @@ class BSSnonstat():
 
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
+
+        # the mean of X, which transform subtracts (the components are
+        # fitted to the centred, whitened data)
+        self.mean_ = pca_white.mean_
 
         # whiten the data
         Xw = pca_white.transform(X)
@@ -1285,6 +1413,11 @@ class BSSnonstat():
         transform2 = W
         self.linear_transform_ = (transform1 @ transform2)
 
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
+
         return self
 
     def transform(self, X):
@@ -1305,7 +1438,8 @@ class BSSnonstat():
 
         X = check_input(X)
 
-        return X @ self.linear_transform_
+        # centre X with the mean of the fitted data, as in fit
+        return (X - self.mean_) @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
         """Fit the model to X and apply dimension reduction to X.

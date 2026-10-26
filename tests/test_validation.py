@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from tsdr.slowness import SFA, BioSFA, ISFA, SICA
-from tsdr.autocorrelation import TICA, TMCA, CSA, TCCA_Stiefel, sPCA_dwt
+from tsdr.autocorrelation import TICA, TMCA, CSA, TCCA, TCCA_Stiefel, sPCA_dwt
 from tsdr.predictability import TLPC, PrCA, DiCCA, ForeCA, PFA, PTS, DCA
 from tsdr.determinism import DyCA, DMD
 from tsdr.nonstationarity import (ASSA, SSAsir, SSAsave, SSAcor, WaSSAf,
@@ -16,7 +16,7 @@ from tsdr.latentvariable import LDS, DFA
 
 from helpers import random_mix, ar1
 
-# all 30 methods, as functions of n_components, with small settings so that
+# all 31 methods, as functions of n_components, with small settings so that
 # the tests are fast
 METHODS = {
     "SFA": lambda n: SFA(n_components=n),
@@ -25,6 +25,7 @@ METHODS = {
     "SICA": lambda n: SICA(n_components=n, max_iters=20, random_state=0),
     "TICA": lambda n: TICA(n_components=n),
     "TMCA": lambda n: TMCA(n_components=n),
+    "TCCA": lambda n: TCCA(n_components=n),
     "TCCA_Stiefel": lambda n: TCCA_Stiefel(n_components=n, max_iters=50),
     "CSA": lambda n: CSA(n_components=n, max_iters=20),
     "sPCA_dwt": lambda n: sPCA_dwt(n_components=n),
@@ -163,6 +164,8 @@ def test_lds_autocorrelation_init_needs_n_components_at_most_n_features(data):
     lambda: DMcov(301, 10),                      # window longer than the data
     lambda: DMcov(40, 0),                        # step not positive
     lambda: DMcov(3, 10, distance='geodesic'),   # singular window covariances
+    lambda: DMcov(3, 10, distance='bhattacharyya'),
+    lambda: DIG(3, 10, distance='geodesic'),
     lambda: DIG(1, 10),
     lambda: DIG(40, 2.5),
 ])
@@ -196,6 +199,7 @@ def test_invalid_lag_raises(data, make):
         make().fit(data)
 
 
-def test_dmcov_unknown_distance_raises(data):
+@pytest.mark.parametrize("method", [DMcov, DIG])
+def test_unknown_window_distance_raises(data, method):
     with pytest.raises(ValueError, match="Unknown distance"):
-        DMcov(40, 20, distance='euclidean').fit(data)
+        method(40, 20, distance='euclidean').fit(data)
