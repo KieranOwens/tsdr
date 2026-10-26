@@ -1,6 +1,6 @@
-"""The methods with a random initialisation accept a random_state argument:
-an int gives reproducible results and leaves the global NumPy random state
-unchanged, and None uses the global NumPy random state."""
+"""The methods with a random initialisation accept a random_state argument
+(default 0): an int gives reproducible results and leaves the global NumPy
+random state unchanged, and None uses the global NumPy random state."""
 
 import numpy as np
 import pytest
@@ -60,4 +60,31 @@ def test_random_state_instance_and_none(data, name):
     Y1 = np.asarray(METHODS[name](np.random.RandomState(7)).fit_transform(data))
     np.random.seed(7)
     Y2 = np.asarray(METHODS[name](None).fit_transform(data))
+    np.testing.assert_array_equal(Y1, Y2)
+
+
+DEFAULTS = {
+    "BioSFA": lambda: BioSFA(n_components=2, n_iters=50),
+    "ISFA": lambda: ISFA(n_components=2, lags=3),
+    "SICA": lambda: SICA(n_components=2),
+    "BSSnonstat": lambda: BSSnonstat(n_components=2, max_iters=5),
+    "LDS": lambda: LDS(n_components=2, max_iter=2, init='random'),
+    "DFA": lambda: DFA(n_components=2, max_iter=2, init='random'),
+    "ForeCA": lambda: ForeCA(n_components=2, n_starts=2),
+    "DCA": lambda: DCA(n_components=2, T=2, n_init=2),
+    "TCCA_Stiefel": lambda: TCCA_Stiefel(n_components=2, max_iters=20),
+}
+
+
+@pytest.mark.parametrize("name", list(DEFAULTS))
+def test_default_random_state_is_zero(data, name):
+    """By default (random_state=0) the results are reproducible, equal those
+    of random_state=0, and leave the global NumPy random state unchanged."""
+    assert DEFAULTS[name]().random_state == 0
+    np.random.seed(123)
+    expected = np.random.rand()
+    np.random.seed(123)
+    Y1 = np.asarray(DEFAULTS[name]().fit_transform(data))
+    assert np.random.rand() == expected
+    Y2 = np.asarray(METHODS[name](0).fit_transform(data))
     np.testing.assert_array_equal(Y1, Y2)

@@ -226,7 +226,7 @@ class BioSFA():
         weights W. Pass an int for reproducible results across calls (the
         global NumPy random state is then left unchanged). If None, the
         global NumPy random state is used.
-        Default: None.
+        Default: 0.
 
     tol: float
         A ConvergenceWarning is raised if the relative change in the weights
@@ -250,7 +250,7 @@ class BioSFA():
     """
 
     def __init__(self, n_components=1, n_iters=1000, lr=0.1, tau=1.0,
-                 random_state=None, tol=1e-4):
+                 random_state=0, tol=1e-4):
 
         self.n_components = n_components
         self.n_iters = n_iters
@@ -462,7 +462,7 @@ class ISFA():
         int for reproducible results across calls (the global NumPy random 
         state is then left unchanged). If None, the global NumPy random state 
         is used.
-        Default: None.
+        Default: 0.
 
     Attributes
     ----------
@@ -479,7 +479,7 @@ class ISFA():
     """
 
     def __init__(self, n_components=1, lags=10, b_ica=1.0, b_sfa=1.0, 
-                 max_iters=100, tol=1e-8, random_state=None):
+                 max_iters=100, tol=1e-8, random_state=0):
 
         self.n_components = n_components
         self.lags = lags
@@ -739,7 +739,7 @@ class SICA():
         Controls the random initialisation. Pass an int for reproducible 
         results across calls (the global NumPy random state is then left 
         unchanged). If None, the global NumPy random state is used.
-        Default: None.
+        Default: 0.
 
     Attributes
     ----------
@@ -757,7 +757,7 @@ class SICA():
     """
 
     def __init__(self, n_components=1, a=1.0, max_iters=200, tol=1e-8, 
-                 random_state=None):
+                 random_state=0):
 
         self.n_components = n_components
         self.a = a

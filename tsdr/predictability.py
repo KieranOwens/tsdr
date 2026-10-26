@@ -677,7 +677,7 @@ class ForeCA():
         Controls the random starts. Pass an int for reproducible results 
         across calls (the global NumPy random state is then left unchanged). 
         If None, the global NumPy random state is used.
-        Default: None.
+        Default: 0.
 
     Attributes
     ----------
@@ -694,7 +694,7 @@ class ForeCA():
     """
 
     def __init__(self, n_components=1, bandwidth=5, prior_weight=1e-3, 
-                 n_starts=10, max_iters=100, tol=1e-6, random_state=None):
+                 n_starts=10, max_iters=100, tol=1e-6, random_state=0):
 
         self.n_components = n_components
         self.bandwidth = bandwidth
@@ -1404,7 +1404,7 @@ class DCA():
         Controls the random initialisations. Pass an int for reproducible 
         results across calls (the global NumPy random state is then left 
         unchanged). If None, the global NumPy random state is used.
-        Default: None.
+        Default: 0.
 
     Attributes
     ----------
@@ -1423,7 +1423,7 @@ class DCA():
     """
 
     def __init__(self, n_components=1, T=5, n_init=5, ortho_penalty=1.0, 
-                 random_state=None):
+                 random_state=0):
 
         self.n_components = n_components
         self.T = T

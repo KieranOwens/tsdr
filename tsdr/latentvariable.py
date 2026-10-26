@@ -79,7 +79,7 @@ class LDS():
         matrix C if init='random'. Pass an int for reproducible results 
         across calls (the global NumPy random state is then left unchanged).
         If None, the global NumPy random state is used.
-        Default: None.
+        Default: 0.
 
     init: str
         The initialisation of the output/observation matrix C. If 
@@ -93,7 +93,7 @@ class LDS():
     """
 
     def __init__(self, n_components=1, max_iter=50, constrain_A_identity=False, whiten=True,
-                 random_state=None, init='autocorrelation', tol=1e-3):
+                 random_state=0, init='autocorrelation', tol=1e-3):
 
         self.n_components = n_components
         self.max_iter = max_iter
@@ -429,7 +429,7 @@ class DFA(LDS):
         matrix C if init='random'. Pass an int for reproducible results 
         across calls (the global NumPy random state is then left unchanged).
         If None, the global NumPy random state is used.
-        Default: None.
+        Default: 0.
 
     init: str
         The initialisation of the output/observation matrix C, 
@@ -438,7 +438,7 @@ class DFA(LDS):
     """
 
     def __init__(self, n_components=1, max_iter=50, whiten=True, 
-                 random_state=None, init='autocorrelation', tol=1e-3):
+                 random_state=0, init='autocorrelation', tol=1e-3):
 
         # an LDS with the transition matrix constrained to the identity
         super().__init__(n_components=n_components, max_iter=max_iter, 

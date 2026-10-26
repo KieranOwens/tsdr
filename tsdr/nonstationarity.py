@@ -1278,7 +1278,7 @@ class BSSnonstat():
         vectors w. Pass an int for reproducible results across calls (the
         global NumPy random state is then left unchanged). If None, the
         global NumPy random state is used.
-        Default: None.
+        Default: 0.
 
     tol: float
         A ConvergenceWarning is raised if the change in a kept projection 
@@ -1297,7 +1297,7 @@ class BSSnonstat():
         from X before applying linear_transform_.
     """
 
-    def __init__(self, n_components=1, lag=1, max_iters=100, random_state=None,
+    def __init__(self, n_components=1, lag=1, max_iters=100, random_state=0,
                  n_init=5, tol=1e-6):
 
         self.n_components = n_components
