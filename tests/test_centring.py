@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from tsdr.slowness import SFA, BioSFA, ISFA, SICA
-from tsdr.autocorrelation import TICA, TMCA, TCCA_Stiefel, CSA
+from tsdr.autocorrelation import TICA, TMCA, TCCA, TCCA_Stiefel, CSA
 from tsdr.predictability import TLPC, PrCA, DiCCA, ForeCA, PFA, PTS, DCA
 from tsdr.determinism import DyCA, DMD
 from tsdr.nonstationarity import (ASSA, SSAsir, SSAsave, SSAcor, WaSSAf,
@@ -24,6 +24,7 @@ LINEAR = {
     "SICA": lambda: SICA(n_components=2, max_iters=20, random_state=0),
     "TICA": lambda: TICA(n_components=2),
     "TMCA": lambda: TMCA(n_components=2),
+    "TCCA": lambda: TCCA(n_components=2, lag=2),
     "TCCA_Stiefel": lambda: TCCA_Stiefel(n_components=2, max_iters=50),
     "TCCA_Stiefel_nowhiten": lambda: TCCA_Stiefel(n_components=2, max_iters=50,
                                                   whiten=False),
