@@ -18,6 +18,7 @@ from sklearn.decomposition import PCA
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.utils import check_random_state
 
+from ._validation import check_input, check_lag, check_n_windows
 from ._whitening import fit_whitening
 
 ###############################################################################
@@ -118,11 +119,16 @@ class ASSA():
             Returns self.
         """
 
+        X = check_input(X, self.n_components)
+
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
         # whiten the data
         Xw = pca_white.transform(X)
+
+        # windows of at least 2 samples for the window covariances
+        check_n_windows(self.n_windows, X.shape[0], min_length=2)
 
         # get matrix S
         S = self._compute_S(Xw)
@@ -162,6 +168,8 @@ class ASSA():
             either non-stationarity or stationarity.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -181,6 +189,8 @@ class ASSA():
             A (possibly multivariate) time series of components ordered by 
             either non-stationarity or stationarity.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         
@@ -269,11 +279,16 @@ class SSAsir():
             Returns self.
         """
 
+        X = check_input(X, self.n_components)
+
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
         # whiten the data
         Xw = pca_white.transform(X)
+
+        # windows of at least 1 sample for the window means
+        check_n_windows(self.n_windows, X.shape[0], min_length=1)
 
         # get matrix S
         Mm = self._compute_Mm(Xw)
@@ -307,6 +322,8 @@ class SSAsir():
             either non-stationarity or stationarity.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -326,6 +343,8 @@ class SSAsir():
             A (possibly multivariate) time series of components ordered by 
             either non-stationarity or stationarity.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         
@@ -420,11 +439,16 @@ class SSAsave():
             Returns self.
         """
 
+        X = check_input(X, self.n_components)
+
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
         # whiten the data
         Xw = pca_white.transform(X)
+
+        # windows of at least 2 samples for the window covariances
+        check_n_windows(self.n_windows, X.shape[0], min_length=2)
 
         # get matrix S
         Mv = self._compute_Mv(Xw)
@@ -458,6 +482,8 @@ class SSAsave():
             either non-stationarity or stationarity.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -477,6 +503,8 @@ class SSAsave():
             A (possibly multivariate) time series of components ordered by 
             either non-stationarity or stationarity.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         
@@ -584,11 +612,17 @@ class SSAcor():
             Returns self.
         """
 
+        X = check_input(X, self.n_components)
+
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
         # whiten the data
         Xw = pca_white.transform(X)
+
+        # windows of at least lag + 2 samples for the window autocovariances
+        check_lag(self.lag, X.shape[0])
+        check_n_windows(self.n_windows, X.shape[0], min_length=self.lag + 2)
 
         # get matrix S
         Mtau = self._compute_Mtau(Xw)
@@ -622,6 +656,8 @@ class SSAcor():
             either non-stationarity or stationarity.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -641,6 +677,8 @@ class SSAcor():
             A (possibly multivariate) time series of components ordered by 
             either non-stationarity or stationarity.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         
@@ -812,11 +850,16 @@ class WaSSAf():
             Returns self.
         """
 
+        X = check_input(X, self.n_components)
+
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
         # whiten the data
         Xw = pca_white.transform(X)
+
+        # windows of at least 2 samples for the window covariances
+        check_n_windows(self.n_windows, X.shape[0], min_length=2)
 
         # get matrix S
         S = self._compute_S(Xw)
@@ -850,6 +893,8 @@ class WaSSAf():
             either non-stationarity or stationarity.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -869,6 +914,8 @@ class WaSSAf():
             A (possibly multivariate) time series of components ordered by 
             either non-stationarity or stationarity.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         
@@ -980,11 +1027,16 @@ class WaSSAr():
             Returns self.
         """
 
+        X = check_input(X, self.n_components)
+
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
         # whiten the data
         Xw = pca_white.transform(X)
+
+        # windows of at least 2 samples for the window covariances
+        check_n_windows(self.n_windows, X.shape[0], min_length=2)
 
         # get matrix S
         S = self._compute_S(Xw)
@@ -1018,6 +1070,8 @@ class WaSSAr():
             either non-stationarity or stationarity.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -1037,6 +1091,8 @@ class WaSSAr():
             A (possibly multivariate) time series of components ordered by 
             either non-stationarity or stationarity.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         
@@ -1131,6 +1187,10 @@ class BSSnonstat():
             Returns self.
         """
 
+        X = check_input(X, self.n_components)
+
+        check_lag(self.lag, X.shape[0])
+
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
@@ -1217,6 +1277,8 @@ class BSSnonstat():
             nonstationarity of the variance.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -1236,6 +1298,8 @@ class BSSnonstat():
             A (possibly multivariate) time series of components ordered by 
             nonstationarity of the variance.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         

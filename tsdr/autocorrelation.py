@@ -17,6 +17,7 @@ from sklearn.decomposition import PCA
 from sklearn.exceptions import ConvergenceWarning
 import pywt
 
+from ._validation import check_input
 from ._whitening import fit_whitening
 
 ###############################################################################
@@ -80,6 +81,8 @@ class TICA():
             Returns self.
         """
 
+        X = check_input(X, self.n_components)
+
         # data dimensions
         T, _ = X.shape
 
@@ -120,6 +123,8 @@ class TICA():
             autocorrelation.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -139,6 +144,8 @@ class TICA():
             A (possibly multivariate) time series of components ordered by 
             autocorrelation.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         
@@ -205,6 +212,8 @@ class TMCA():
             Returns self.
         """
 
+        X = check_input(X, self.n_components)
+
         # data dimensions
         T, _ = X.shape
 
@@ -242,6 +251,8 @@ class TMCA():
             autocorrelation.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -261,6 +272,8 @@ class TMCA():
             A (possibly multivariate) time series of components ordered by 
             autocorrelation.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         
@@ -384,6 +397,8 @@ class TCCA_Stiefel:
             Returns self.
         """
 
+        X = check_input(X, self.n_components)
+
         # data shape
         T, D = X.shape
 
@@ -457,6 +472,8 @@ class TCCA_Stiefel:
             autocorrelation.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -476,6 +493,8 @@ class TCCA_Stiefel:
             A (possibly multivariate) time series of components ordered by 
             autocorrelation.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         
@@ -573,6 +592,8 @@ class CSA():
             Returns self.
         """
 
+        X = check_input(X, self.n_components)
+
         # data dimensions
         T, _ = X.shape
 
@@ -635,6 +656,8 @@ class CSA():
             autocorrelation.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -654,6 +677,8 @@ class CSA():
             A (possibly multivariate) time series of components ordered by 
             autocorrelation.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         
@@ -737,6 +762,8 @@ class sPCA_dwt():
             Returns self.
         """
 
+        X = check_input(X, self.n_components)
+
         # data length
         T = X.shape[0]
 
@@ -791,6 +818,8 @@ class sPCA_dwt():
             A (possibly multivariate) time series of components ordered by 
             variance they explain in the low-pass DWT coefficients.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         

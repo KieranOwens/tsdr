@@ -18,6 +18,7 @@ from sklearn.decomposition import PCA
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.utils import check_random_state
 
+from ._validation import check_input
 from ._whitening import fit_whitening
 
 ###############################################################################
@@ -81,6 +82,8 @@ class SFA():
             Returns self.
         """
 
+        X = check_input(X, self.n_components)
+
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
@@ -119,6 +122,8 @@ class SFA():
             slowness.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -138,6 +143,8 @@ class SFA():
             A (possibly multivariate) time series of components ordered by 
             slowness.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         
@@ -242,6 +249,8 @@ class BioSFA():
             Returns self.
         """
 
+        X = check_input(X, self.n_components)
+
         if not 0 < self.lr < self.tau:
             raise ValueError(f"lr must satisfy 0 < lr < tau (got lr={self.lr}, "
                              f"tau={self.tau}), so that M remains positive "
@@ -310,6 +319,8 @@ class BioSFA():
             slowness.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -329,6 +340,8 @@ class BioSFA():
             A (possibly multivariate) time series of components ordered by 
             slowness.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         
@@ -489,6 +502,8 @@ class ISFA():
             Returns self.
         """
 
+        X = check_input(X, self.n_components)
+
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
@@ -575,6 +590,8 @@ class ISFA():
             ordered by slowness.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -594,6 +611,8 @@ class ISFA():
             A (possibly multivariate) time series of independent components 
             ordered by slowness.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         
@@ -696,6 +715,8 @@ class SICA():
             Returns self.
         """
 
+        X = check_input(X, self.n_components)
+
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
@@ -785,6 +806,8 @@ class SICA():
             ordered by slowness.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -804,6 +827,8 @@ class SICA():
             A (possibly multivariate) time series of independent components 
             ordered by slowness.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         

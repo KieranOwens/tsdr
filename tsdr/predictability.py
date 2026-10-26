@@ -21,6 +21,7 @@ from sklearn.decomposition import PCA
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.utils import check_random_state
 
+from ._validation import check_input
 from ._whitening import fit_whitening
 
 from sklearn.linear_model import LinearRegression
@@ -91,6 +92,8 @@ class TLPC():
             Returns self.
         """
 
+        X = check_input(X, self.n_components)
+
         # data dimensions
         T, _ = X.shape
 
@@ -143,6 +146,8 @@ class TLPC():
             predictability.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -162,6 +167,8 @@ class TLPC():
             A (possibly multivariate) time series of components ordered by 
             predictability.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         
@@ -304,6 +311,8 @@ class PrCA():
             Returns self.
         """
 
+        X = check_input(X, self.n_components)
+
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
         X = pca_white.transform(X)
@@ -336,6 +345,8 @@ class PrCA():
             predictability.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -355,6 +366,8 @@ class PrCA():
             A (possibly multivariate) time series of components ordered by 
             predictability.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         
@@ -419,6 +432,8 @@ class DiCCA():
         self : object
             Returns self.
         """
+
+        X = check_input(X, self.n_components)
 
         # whitening model and transformation
         pca_white = fit_whitening(X)
@@ -496,6 +511,8 @@ class DiCCA():
             predictability.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -515,6 +532,8 @@ class DiCCA():
             A (possibly multivariate) time series of components ordered by 
             predictability.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         
@@ -675,6 +694,8 @@ class ForeCA():
             Returns self.
         """
 
+        X = check_input(X, self.n_components)
+
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
@@ -745,6 +766,8 @@ class ForeCA():
             forecastability.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -764,6 +787,8 @@ class ForeCA():
             A (possibly multivariate) time series of components ordered by 
             forecastability.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         
@@ -851,6 +876,8 @@ class PFA():
             Returns self.
         """
 
+        X = check_input(X, self.n_components)
+
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
@@ -903,6 +930,8 @@ class PFA():
             predictability.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -922,6 +951,8 @@ class PFA():
             A (possibly multivariate) time series of components ordered by 
             predictability.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         
@@ -1088,6 +1119,8 @@ class PTS():
             Returns self.
         """
 
+        X = check_input(X, self.n_components)
+
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
@@ -1162,6 +1195,8 @@ class PTS():
             predictability.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -1181,6 +1216,8 @@ class PTS():
             A (possibly multivariate) time series of components ordered by 
             predictability.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         
@@ -1307,6 +1344,8 @@ class DCA():
             Returns self.
         """
 
+        X = check_input(X, self.n_components)
+
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
@@ -1374,6 +1413,8 @@ class DCA():
             most predictive subspace.
         """
 
+        X = check_input(X)
+
         return X @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
@@ -1393,6 +1434,8 @@ class DCA():
             A (possibly multivariate) time series of components spanning the
             most predictive subspace.
         """
+
+        X = check_input(X, self.n_components)
 
         self.fit(X)
         

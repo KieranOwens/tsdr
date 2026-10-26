@@ -13,6 +13,7 @@ from kneed import KneeLocator
 from sklearn.neighbors import NearestNeighbors
 from sklearn.manifold import MDS
 
+from ._validation import check_input, check_n_components, check_window
 from ._whitening import fit_whitening
 
 
@@ -142,6 +143,22 @@ class DMcov():
             Returns self.
         """
 
+        X = check_input(X)
+        T, D = X.shape
+
+        # windows of at least 2 samples for the window covariances, and of 
+        # at least D + 1 samples for the geodesic distance, which needs 
+        # positive definite (nonsingular) window covariances
+        if self.distance == 'geodesic':
+            check_window(self.window, self.step, T, min_length=D + 1)
+        else:
+            check_window(self.window, self.step, T, min_length=2)
+
+        # the components are the nontrivial eigenvectors of the 
+        # n_windows x n_windows kernel matrix
+        n_windows = (T - self.window) // self.step + 1
+        check_n_components(self.n_components, max_components=n_windows - 1)
+
         # mean centering
         X = X - np.mean(X, axis=0)
 
@@ -204,6 +221,8 @@ class DMcov():
             row per window (starting at samples 0, step, 2*step, ..., so 
             n_windows = (n_samples - window) // step + 1).
         """
+
+        X = check_input(X)
 
         self.fit(X)
         
@@ -370,6 +389,17 @@ class DIG():
             Returns self.
         """
 
+        X = check_input(X)
+        T, _ = X.shape
+
+        # windows of at least 2 samples for the window covariances
+        check_window(self.window, self.step, T, min_length=2)
+
+        # multidimensional scaling of the n_windows x n_windows information
+        # distances gives at most n_windows components
+        n_windows = (T - self.window) // self.step + 1
+        check_n_components(self.n_components, max_components=n_windows)
+
         # copute covariance distances
         W = self._cov_distance_matrix(X)
 
@@ -410,6 +440,8 @@ class DIG():
             row per window (starting at samples 0, step, 2*step, ..., so 
             n_windows = (n_samples - window) // step + 1).
         """
+
+        X = check_input(X)
 
         self.fit(X)
         
@@ -528,6 +560,14 @@ class NLSA():
             Returns self.
         """
 
+        X = check_input(X)
+        _, D = X.shape
+
+        # the temporal modes are the right singular vectors of the 
+        # (q * D) x n_eigenfunctions linear operator A
+        check_n_components(self.n_components, 
+                           max_components=min(self.q * D, self.n_eigenfunctions))
+
         if self.whiten:
 
             # whiten the data
@@ -605,6 +645,8 @@ class NLSA():
             A (possibly multivariate) time series of temporal modes, for time 
             points q, ..., n_samples - 1.
         """
+
+        X = check_input(X)
 
         self.fit(X)
         

@@ -11,6 +11,7 @@ from scipy.linalg import pinv
 from sklearn.decomposition import PCA
 from sklearn.utils import check_random_state
 
+from ._validation import check_input, check_n_components
 from ._whitening import fit_whitening
 
 ###############################################################################
@@ -214,6 +215,8 @@ class LDS():
             Returns self.
         """
 
+        X = check_input(X)
+
         # new variable for the input time series to maintain 
         # the naming conventions in the Ghahramani and Hinton paper
         Y = X.copy()
@@ -221,6 +224,14 @@ class LDS():
         # Input time-series dimensions
         _, D = Y.shape
         d = self.n_components
+
+        # the autocorrelation initialisation of C needs d <= D directions of 
+        # the data, whereas a random initialisation allows a latent state of
+        # any dimension (e.g., d = 2 for an oscillation in univariate data)
+        if self.init == 'autocorrelation':
+            check_n_components(d, max_components=D)
+        else:
+            check_n_components(d, max_components=np.inf)
 
         if self.whiten:
             # fit a PCA whitening model
@@ -291,6 +302,8 @@ class LDS():
         X_new: ndarray, shape (n_samples, n_components)
             A (possibly multivariate) time series of components.
         """
+
+        X = check_input(X)
         # Whiten the input data if required
         if self.whiten:
 
@@ -318,6 +331,8 @@ class LDS():
         X_new: ndarray, shape (n_samples, n_components)
             A (possibly multivariate) time series of components.
         """
+
+        X = check_input(X)
 
         self.fit(X)
         
