@@ -144,10 +144,11 @@ class DMcov():
 
     DMcov is a nonlinear TSDR method for extracting components from a 
     multivariate time series based on the distances between time-series 
-    segments (windows), each summarised by its mean and covariance. With the
-    default distance, 'mean_mahalanobis', only the window means are compared
+    segments (windows), each summarised by its mean and covariance. The 
+    default distance, 'bhattacharyya', compares both the means and the 
+    covariances of the windows; 'mean_mahalanobis' compares only the means 
     (the covariances set the scale), so changes in covariance alone are not 
-    detected; the 'wasserstein' and 'bhattacharyya' distances compare both.
+    detected.
 
     The steps involved in DMcov are: (1) compute a square matrix of distances
     between time-series segments (windows), each summarised by its mean and 
@@ -192,7 +193,7 @@ class DMcov():
         of at least n_features + 1 samples. See _window_distance for the 
         formulas. The old name 'mahalanobis' is accepted for 
         'mean_mahalanobis', with a DeprecationWarning.
-        Default: 'mean_mahalanobis'.
+        Default: 'bhattacharyya'.
 
     normalise: bool
         Whether to use the standard graph Laplacian L = D - W (False) or the
@@ -201,7 +202,7 @@ class DMcov():
     """
 
     def __init__(self, window, step, n_components=1, 
-                 sigma=2.0, distance='mean_mahalanobis', normalise=True):
+                 sigma=2.0, distance='bhattacharyya', normalise=True):
 
         self.window = window
         self.step = step
