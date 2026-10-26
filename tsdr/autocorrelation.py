@@ -16,6 +16,7 @@ import warnings
 
 import numpy as np
 from sklearn.exceptions import ConvergenceWarning
+from sklearn.utils import check_random_state
 import pywt
 
 from ._linalg import sqrtm_psd
@@ -553,10 +554,17 @@ class TCCA_Stiefel:
         below tol.
         Default: 1e-6.
 
-    seed: int
-        The random seed used for initialisation of the linear transformation
-        weights.
+    random_state: int, RandomState instance or None
+        Controls the random initialisation of the linear transformation 
+        weights. Pass an int for reproducible results across calls (the 
+        global NumPy random state is then left unchanged). If None, the 
+        global NumPy random state is used.
         Default: 0.
+
+    seed: int or None
+        Deprecated alias of random_state (if not None, it is used in place 
+        of random_state, with a DeprecationWarning).
+        Default: None.
 
     whiten: bool
         Whether to whiten the data (if False, the data are mean-centred).
@@ -572,12 +580,13 @@ class TCCA_Stiefel:
         The mean of the fitted time series, which transform subtracts
         from X before applying linear_transform_.
     """
-    def __init__(self, n_components=1, lag=1, max_iters=1000, lr=0.1, seed=0, whiten=True,
-                 tol=1e-6):
+    def __init__(self, n_components=1, lag=1, max_iters=1000, lr=0.1, random_state=0, 
+                 whiten=True, tol=1e-6, seed=None):
         self.n_components = n_components
         self.lag = lag
         self.max_iters = max_iters
         self.lr = lr
+        self.random_state = random_state
         self.seed = seed
         self.whiten = whiten
         self.tol = tol
@@ -653,9 +662,15 @@ class TCCA_Stiefel:
         C0 = (X0.T @ X0) / (T - 1 - lag)
         Ctau = (X0.T @ Xtau) / (T - 1 - lag)
 
-        # Random number generator for initialisation of W (without 
-        # resetting the global NumPy random state)
-        rng = np.random.RandomState(self.seed)
+        # Random number generator for initialisation of W (an int 
+        # random_state does not reset the global NumPy random state); seed is 
+        # the deprecated name of random_state
+        random_state = self.random_state
+        if self.seed is not None:
+            warnings.warn("The seed argument of TCCA_Stiefel is deprecated; use "
+                          "random_state instead.", DeprecationWarning, stacklevel=2)
+            random_state = self.seed
+        rng = check_random_state(random_state)
 
         # Initialise W on the Stiefel manifold
         W = rng.randn(D, self.n_components)

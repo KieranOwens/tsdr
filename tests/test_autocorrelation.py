@@ -110,8 +110,18 @@ def test_tcca_stiefel_keeps_global_random_state(ar_sources):
     np.random.seed(123)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", ConvergenceWarning)
-        TCCA_Stiefel(n_components=1, seed=0).fit(X)
+        TCCA_Stiefel(n_components=1, random_state=0).fit(X)
     assert np.random.rand() == expected
+
+
+def test_tcca_stiefel_seed_is_a_deprecated_alias_of_random_state(ar_sources):
+    _, X = ar_sources
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", ConvergenceWarning)
+        W = TCCA_Stiefel(n_components=2, max_iters=50, random_state=3).fit(X).linear_transform_
+        with pytest.warns(DeprecationWarning, match="random_state"):
+            W_seed = TCCA_Stiefel(n_components=2, max_iters=50, seed=3).fit(X).linear_transform_
+    np.testing.assert_array_equal(W_seed, W)
 
 
 @pytest.mark.parametrize("T", [1000, 1001])

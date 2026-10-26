@@ -8,6 +8,7 @@ import pytest
 from tsdr.slowness import BioSFA, ISFA, SICA
 from tsdr.nonstationarity import BSSnonstat
 from tsdr.latentvariable import LDS, DFA
+from tsdr.autocorrelation import TCCA_Stiefel
 from tsdr.predictability import ForeCA, DCA
 
 from helpers import random_mix, ar1
@@ -22,6 +23,8 @@ METHODS = {
     "DFA": lambda rs: DFA(n_components=2, max_iter=2, init='random', random_state=rs),
     "ForeCA": lambda rs: ForeCA(n_components=2, n_starts=2, random_state=rs),
     "DCA": lambda rs: DCA(n_components=2, T=2, n_init=2, random_state=rs),
+    "TCCA_Stiefel": lambda rs: TCCA_Stiefel(n_components=2, max_iters=20,
+                                            random_state=rs),
 }
 
 

@@ -93,7 +93,7 @@ The figure at the top summarizes these categories.
 
 A few methods differ from the common pattern:
 
-- Methods with a random initialization or random order of updates (`BioSFA`, `ISFA`, `SICA`, `ForeCA`, `DCA`, `BSSnonstat`, and `LDS` and `DFA` with `init='random'`) accept a `random_state` argument for reproducible results; `TCCA_Stiefel` uses a `seed` argument. `LDS` and `DFA` are initialised deterministically by default (`init='autocorrelation'`). `BSSnonstat` and `DCA` run their optimisation from several random initialisations (`n_init`, default 5) and keep the best solution, as `ForeCA` does (`n_starts`).
+- Methods with a random initialization or random order of updates (`BioSFA`, `ISFA`, `SICA`, `TCCA_Stiefel`, `ForeCA`, `DCA`, `BSSnonstat`, and `LDS` and `DFA` with `init='random'`) accept a `random_state` argument for reproducible results (the old `seed` argument of `TCCA_Stiefel` still works but is deprecated). `LDS` and `DFA` are initialised deterministically by default (`init='autocorrelation'`). `BSSnonstat` and `DCA` run their optimisation from several random initialisations (`n_init`, default 5) and keep the best solution, as `ForeCA` does (`n_starts`).
 - `sPCA_dwt` and the three diffusion methods return component time series of the fitted data rather than a linear map of the features, so they have `fit_transform` but no out-of-sample `transform` (`sPCA_dwt.transform` raises `NotImplementedError`, and the diffusion methods have no `transform` method).
   `DMcov` and `DIG` embed sliding windows of the time series (of length `window`, every `step` samples), so they return one row per window; `NLSA` embeds the time series with `q` lags, so it returns `n_samples - q` rows (for time points `q` onwards).
 
