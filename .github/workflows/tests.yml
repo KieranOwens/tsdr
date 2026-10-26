@@ -20,4 +20,13 @@ jobs:
       - name: Install tsdr with its test dependencies
         run: python -m pip install -e ".[test]"
       - name: Run the tests
-        run: python -m pytest
+        shell: bash
+        run: |
+          python -m pip list | grep -iE "^(numpy|scipy|scikit-learn) " | tr -s ' ' | tr '\n' ';' | sed 's/^/::notice::/'; echo
+          status=0
+          for run in 1 2 3; do
+            python -m pytest -rfE --tb=short -q -p no:cacheprovider > pytest_$run.log 2>&1 || status=1
+            grep -E "^(FAILED|ERROR) " pytest_$run.log | sed "s/^/::error::run $run: /" || true
+            grep -E "^E   " pytest_$run.log | head -6 | sed "s/^/::warning::run $run: /" || true
+          done
+          exit $status
