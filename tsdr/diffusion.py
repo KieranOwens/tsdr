@@ -464,7 +464,10 @@ class DIG():
                           f"{np.sum(Lambda < -tol)} of the {self.n_components} "
                           "components are set to zero; consider reducing "
                           "n_components.", RuntimeWarning)
-        Lambda = np.clip(Lambda, 0.0, None)
+
+        # eigenvalues that are zero up to rounding (e.g., 1e-16) are set to 
+        # exactly zero, so that their components are zero on every platform
+        Lambda = np.where(Lambda > tol, Lambda, 0.0)
 
         return W * np.sqrt(Lambda)
 
