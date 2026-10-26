@@ -69,7 +69,7 @@ class LDS():
 
     whiten: bool
         If True, the input time series is whitened before fitting the model.
-        If False, the input time series is used unchanged.
+        If False, it is only mean-centred (the model has no mean term).
         Whitened data can improve the convergence of the EM algorithm and
         the stability of the model parameters.
         Default: True.
@@ -242,12 +242,20 @@ class LDS():
         else:
             check_n_components(d, max_components=np.inf)
 
+        # the mean of the data, which transform also subtracts: the model 
+        # y_t = C x_t + v_t has no mean term, so the data must be centred
+        self.mean_ = np.mean(Y, axis=0)
+
         if self.whiten:
             # fit a PCA whitening model
             self.pca_white = fit_whitening(Y)
 
-            # whiten the data
+            # whiten the data (which also centres it)
             Y = self.pca_white.transform(Y)
+
+        else:
+            # centre the data
+            Y = Y - self.mean_
 
         # Initialization
         A = np.eye(d)               # Latent state transition dynamics matrix
@@ -324,11 +332,17 @@ class LDS():
         """
 
         X = check_input(X)
-        # Whiten the input data if required
+        # Whiten the input data if required (whitening also centres it), or
+        # else centre it, as in fit
         if self.whiten:
 
             # whiten the data
             X = self.pca_white.transform(X)
+
+        else:
+
+            # centre the data
+            X = X - self.mean_
 
         # E-step: Kalman filtering and smoothing
         Ex, _, _ = self._E_step(X, self.A, self.Q, self.C, self.R, self.mu0, self.V0)
@@ -407,7 +421,7 @@ class DFA(LDS):
 
     whiten: bool
         If True, the input time series is whitened before fitting the model.
-        If False, the input time series is used unchanged.
+        If False, it is only mean-centred (the model has no mean term).
         Default: True.
 
     random_state: int, RandomState instance or None

@@ -53,7 +53,11 @@ class SFA():
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
         The linear transformation that yields the SFA components when applied 
-        to the input time series X.
+        to the centred time series X - mean_.
+
+    mean_: ndarray, shape (n_features,)
+        The mean of the fitted time series, which transform subtracts
+        from X before applying linear_transform_.
 
     eigvals_: ndarray, shape (n_features,)
         The variance of the temporal derivative (difference) of each 
@@ -86,6 +90,10 @@ class SFA():
 
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
+
+        # the mean of X, which transform subtracts (the components are
+        # fitted to the centred, whitened data)
+        self.mean_ = pca_white.mean_
 
         # whiten the data
         Xw = pca_white.transform(X)
@@ -124,7 +132,8 @@ class SFA():
 
         X = check_input(X)
 
-        return X @ self.linear_transform_
+        # centre X with the mean of the fitted data, as in fit
+        return (X - self.mean_) @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
         """Fit the model to X and apply dimension reduction to X.
@@ -223,7 +232,11 @@ class BioSFA():
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
         The linear transformation that yields the BioSFA components when 
-        applied to the input time series X.
+        applied to the centred time series X - mean_.
+
+    mean_: ndarray, shape (n_features,)
+        The mean of the fitted time series, which transform subtracts
+        from X before applying linear_transform_.
 
     eigvals_: ndarray, shape (n_components,)
         The variance of the temporal derivative of each (unit-variance) 
@@ -265,6 +278,11 @@ class BioSFA():
                              "definite (Lipshutz et al., 2020).")
 
         pca_white = fit_whitening(X)
+
+        # the mean of X, which transform subtracts (the components are
+        # fitted to the centred, whitened data)
+        self.mean_ = pca_white.mean_
+
         Xw = pca_white.transform(X)
 
         T, D = Xw.shape
@@ -340,7 +358,8 @@ class BioSFA():
 
         X = check_input(X)
 
-        return X @ self.linear_transform_
+        # centre X with the mean of the fitted data, as in fit
+        return (X - self.mean_) @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
         """Fit the model to X and apply dimension reduction to X.
@@ -438,7 +457,11 @@ class ISFA():
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
         The linear transformation that yields the ISFA components when applied 
-        to the input time series X.
+        to the centred time series X - mean_.
+
+    mean_: ndarray, shape (n_features,)
+        The mean of the fitted time series, which transform subtracts
+        from X before applying linear_transform_.
 
     objective_: float
         The value of the ISFA objective at the solution.
@@ -526,6 +549,10 @@ class ISFA():
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
 
+        # the mean of X, which transform subtracts (the components are
+        # fitted to the centred, whitened data)
+        self.mean_ = pca_white.mean_
+
         # whiten the data
         Xw = pca_white.transform(X)
 
@@ -611,7 +638,8 @@ class ISFA():
 
         X = check_input(X)
 
-        return X @ self.linear_transform_
+        # centre X with the mean of the fitted data, as in fit
+        return (X - self.mean_) @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
         """Fit the model to X and apply dimension reduction to X.
@@ -701,7 +729,11 @@ class SICA():
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
         The linear transformation that yields the SICA components when applied 
-        to the input time series X.
+        to the centred time series X - mean_.
+
+    mean_: ndarray, shape (n_features,)
+        The mean of the fitted time series, which transform subtracts
+        from X before applying linear_transform_.
 
     slowness_: ndarray, shape (n_components,)
         The slowness (variance of the temporal derivative) of each 
@@ -738,6 +770,10 @@ class SICA():
 
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
+
+        # the mean of X, which transform subtracts (the components are
+        # fitted to the centred, whitened data)
+        self.mean_ = pca_white.mean_
 
         # whiten the data
         Z = pca_white.transform(X)
@@ -827,7 +863,8 @@ class SICA():
 
         X = check_input(X)
 
-        return X @ self.linear_transform_
+        # centre X with the mean of the fitted data, as in fit
+        return (X - self.mean_) @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
         """Fit the model to X and apply dimension reduction to X.

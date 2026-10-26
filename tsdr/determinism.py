@@ -53,7 +53,11 @@ class DyCA():
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
         The linear transformation that yields the DyCA components when applied 
-        to the input time series X.
+        to the centred time series X - mean_.
+
+    mean_: ndarray, shape (n_features,)
+        The mean of the fitted time series, which transform subtracts
+        from X before applying linear_transform_.
 
     eigvals_: ndarray, shape (n_eigvals,)
         The generalised eigenvalues that are <= 1, ordered by decreasing 
@@ -94,6 +98,10 @@ class DyCA():
 
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
+
+        # the mean of X, which transform subtracts (the components are
+        # fitted to the centred, whitened data)
+        self.mean_ = pca_white.mean_
 
         # whiten the data
         X = pca_white.transform(X)
@@ -150,7 +158,8 @@ class DyCA():
 
         X = check_input(X)
 
-        return X @ self.linear_transform_
+        # centre X with the mean of the fitted data, as in fit
+        return (X - self.mean_) @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
         """Fit the model to X and apply dimension reduction to X.
@@ -251,18 +260,22 @@ class DMD():
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
         The linear transformation that yields the DMD components when applied
-        to the input time series X. Complex if return_complex=True.
+        to the centred time series X - mean_. Complex if return_complex=True.
+
+    mean_: ndarray, shape (n_features,)
+        The mean of the fitted time series if whiten=True (whitening centres
+        the data), and zero if whiten=False (exact DMD of the data as given).
+        transform subtracts it from X before applying linear_transform_.
 
     eigvals_: ndarray (complex), shape (n_features,)
         The DMD eigenvalues, ordered by decreasing modulus.
 
     modes_: ndarray (complex), shape (n_features, n_features)
         The DMD modes in the coordinates of the input data, in the same order
-        as eigvals_. With Z = (X - mean) @ W the complex components of all
+        as eigvals_. With Z = (X - mean_) @ W the complex components of all
         modes (W being the full complex linear transformation, of which the
         first columns are linear_transform_ when return_complex=True), the
-        data are reconstructed as X - mean = Z @ modes_.T. Here mean is the
-        mean of X if whiten=True and zero otherwise.
+        data are reconstructed as X - mean_ = Z @ modes_.T.
     """
 
     def __init__(self, n_components=1, whiten=True, return_complex=False):
@@ -295,8 +308,17 @@ class DMD():
             # fit a PCA whitening model
             pca_white = fit_whitening(X)
 
+            # the mean of X, which transform subtracts (whitening centres
+            # the data)
+            self.mean_ = pca_white.mean_
+
             # whiten the data
             X = pca_white.transform(X)
+
+        else:
+
+            # exact DMD of the data as given, without centring
+            self.mean_ = np.zeros(X.shape[1], dtype=X.dtype)
 
         # data and time-lagged data
         X, Y = X[:-1,:], X[1:]
@@ -387,7 +409,8 @@ class DMD():
 
         X = check_input(X)
 
-        return X @ self.linear_transform_
+        # centre X with the mean of the fitted data, as in fit
+        return (X - self.mean_) @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
         """Fit the model to X and apply dimension reduction to X.

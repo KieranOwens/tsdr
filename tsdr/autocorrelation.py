@@ -55,7 +55,11 @@ class TICA():
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
         The linear transformation that yields the TICA components when applied 
-        to the input time series X.
+        to the centred time series X - mean_.
+
+    mean_: ndarray, shape (n_features,)
+        The mean of the fitted time series, which transform subtracts
+        from X before applying linear_transform_.
     """
 
     def __init__(self, n_components=1, lag=1):
@@ -87,6 +91,10 @@ class TICA():
 
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
+
+        # the mean of X, which transform subtracts (the components are
+        # fitted to the centred, whitened data)
+        self.mean_ = pca_white.mean_
 
         # whiten the data
         Xw = pca_white.transform(X)
@@ -124,7 +132,8 @@ class TICA():
 
         X = check_input(X)
 
-        return X @ self.linear_transform_
+        # centre X with the mean of the fitted data, as in fit
+        return (X - self.mean_) @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
         """Fit the model to X and apply dimension reduction to X.
@@ -186,7 +195,11 @@ class TMCA():
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
         The linear transformation that yields the TMCA components when applied 
-        to the input time series X.
+        to the centred time series X - mean_.
+
+    mean_: ndarray, shape (n_features,)
+        The mean of the fitted time series, which transform subtracts
+        from X before applying linear_transform_.
     """
 
     def __init__(self, n_components=1, lag=1):
@@ -218,6 +231,10 @@ class TMCA():
 
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
+
+        # the mean of X, which transform subtracts (the components are
+        # fitted to the centred, whitened data)
+        self.mean_ = pca_white.mean_
 
         # whiten the data
         Xw = pca_white.transform(X)
@@ -252,7 +269,8 @@ class TMCA():
 
         X = check_input(X)
 
-        return X @ self.linear_transform_
+        # centre X with the mean of the fitted data, as in fit
+        return (X - self.mean_) @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
         """Fit the model to X and apply dimension reduction to X.
@@ -331,14 +349,18 @@ class TCCA_Stiefel:
         Default: 0.
 
     whiten: bool
-        Whether to whiten the data.
+        Whether to whiten the data (if False, the data are mean-centred).
         Default: True.
 
     Attributes
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
         The linear transformation that yields the TCCA components when applied 
-        to the input time series X.
+        to the centred time series X - mean_.
+
+    mean_: ndarray, shape (n_features,)
+        The mean of the fitted time series, which transform subtracts
+        from X before applying linear_transform_.
     """
     def __init__(self, n_components=1, lag=1, max_iters=1000, lr=0.1, seed=0, whiten=True,
                  tol=1e-6):
@@ -404,10 +426,16 @@ class TCCA_Stiefel:
         # Time-lag used for TCCA
         lag = self.lag
 
-        # Whiten the data if required
+        # the mean of X, which transform subtracts
+        self.mean_ = np.mean(X, axis=0)
+
+        # Whiten the data if required (whitening also centres the data);
+        # otherwise centre it, since C0 and Ctau are covariances
         if self.whiten:
             pca_white = fit_whitening(X)
             X = pca_white.transform(X)
+        else:
+            X = X - self.mean_
 
         # Covariance matrices
         X0 = X[:-lag, :] 
@@ -473,7 +501,8 @@ class TCCA_Stiefel:
 
         X = check_input(X)
 
-        return X @ self.linear_transform_
+        # centre X with the mean of the fitted data, as in fit
+        return (X - self.mean_) @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
         """Fit the model to X and apply dimension reduction to X.
@@ -551,7 +580,11 @@ class CSA():
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
         The linear transformation that yields the CSA components when applied 
-        to the input time series X.
+        to the centred time series X - mean_.
+
+    mean_: ndarray, shape (n_features,)
+        The mean of the fitted time series, which transform subtracts
+        from X before applying linear_transform_.
     """
 
     def __init__(self, n_components=1, lag=2, max_iters=1000, tol=1e-6):
@@ -607,6 +640,10 @@ class CSA():
 
         # fit a PCA whitening model
         pca_white = fit_whitening(X)
+
+        # the mean of X, which transform subtracts (the components are
+        # fitted to the centred, whitened data)
+        self.mean_ = pca_white.mean_
 
         # whiten the data
         Xw = pca_white.transform(X)
@@ -677,7 +714,8 @@ class CSA():
 
         X = check_input(X)
 
-        return X @ self.linear_transform_
+        # centre X with the mean of the fitted data, as in fit
+        return (X - self.mean_) @ self.linear_transform_
 
     def fit_transform(self, X, y=None):
         """Fit the model to X and apply dimension reduction to X.
