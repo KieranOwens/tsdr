@@ -66,8 +66,12 @@ class ASSA():
         The linear transformation that yields the ASSA components when applied 
         to the input time series X.
 
-    eigvals_: ndarray, shape (n_features)
-        The singular/eigen-values of the eigendecomposition step.
+    eigvals_: ndarray, shape (n_features,)
+        The eigenvalues lambda of S, in the same order as the components 
+        (of which the first n_components are returned): for 
+        nonstationary=True, 1 - lambda / max(lambda), which increases from 0 
+        for the most nonstationary component; for nonstationary=False, 
+        lambda, in ascending order (most stationary component first).
     """
 
     def __init__(self, n_components=1, n_windows=10, nonstationary=True):
@@ -137,11 +141,13 @@ class ASSA():
         eigvals, eigvecs = np.linalg.eigh(S)
         eigvecs_sorted = eigvecs[:,np.argsort(eigvals)]
 
-        # eigenvalues
-        if self.nonstationary == True:
-            self.eigvals_ = 1 - eigvals[np.argsort(eigvals)]/np.max(eigvals)
-        elif self.nonstationary == False:
-            self.eigvals_ = eigvals[np.argsort(eigvals)][::-1]
+        # eigenvalues, in the same order as the components (descending for 
+        # nonstationary components, ascending for stationary components)
+        eigvals_sorted = eigvals[np.argsort(eigvals)]
+        if self.nonstationary:
+            self.eigvals_ = 1 - eigvals_sorted[::-1]/np.max(eigvals)
+        else:
+            self.eigvals_ = eigvals_sorted
 
         # get linear transformation
         transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
