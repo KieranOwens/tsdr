@@ -146,6 +146,10 @@ class DMcov():
         X = check_input(X)
         T, D = X.shape
 
+        if self.distance not in ('mahalanobis', 'frobenius', 'geodesic'):
+            raise ValueError(f"Unknown distance '{self.distance}'. Options are "
+                             "'mahalanobis', 'frobenius', and 'geodesic'.")
+
         # windows of at least 2 samples for the window covariances, and of 
         # at least D + 1 samples for the geodesic distance, which needs 
         # positive definite (nonsingular) window covariances

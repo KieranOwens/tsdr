@@ -194,3 +194,8 @@ def test_invalid_n_windows_raises(data, make):
 def test_invalid_lag_raises(data, make):
     with pytest.raises(ValueError, match="lag"):
         make().fit(data)
+
+
+def test_dmcov_unknown_distance_raises(data):
+    with pytest.raises(ValueError, match="Unknown distance"):
+        DMcov(40, 20, distance='euclidean').fit(data)
