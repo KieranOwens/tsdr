@@ -918,13 +918,10 @@ class CSA():
         change = np.inf
         for _ in range(self.max_iters):
             W_previous = W
-            C = Ctensor[0]
-            if self.n_components==1:
-                outer = np.outer(W, W).T
-            else:
-                outer = W @ W.T
-            R = C @ outer @ C.T + C.T @ outer @ C
-            for C in Ctensor[1:]:
+            # projection onto the current subspace (W has orthonormal columns)
+            outer = W @ W.T
+            R = np.zeros_like(outer)
+            for C in Ctensor:
                 R += C @ outer @ C.T + C.T @ outer @ C
             _, eigvecs = np.linalg.eigh(R)
             W = eigvecs[:,-1:-self.n_components-1:-1]

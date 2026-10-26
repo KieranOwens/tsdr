@@ -13,11 +13,10 @@
 import warnings
 
 import numpy as np
-import scipy
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.utils import check_random_state
 
-from ._linalg import largest_entry_signs
+from ._linalg import largest_entry_signs, sqrtm_psd
 from ._validation import check_input, check_lag, check_n_windows
 from ._whitening import fit_whitening
 
@@ -840,7 +839,9 @@ class WaSSAf():
             Xc = Xi - np.mean(Xi, axis=0)
             C0i = (1/(Ti - 1)) * (Xc.T @ Xc)
             C0_list.append(C0i)
-            S_r_root += (1/self.n_windows) * scipy.linalg.sqrtm(C0i)
+            # (sqrtm_psd gives the real, symmetric square root of a
+            # covariance matrix, even a singular one)
+            S_r_root += (1/self.n_windows) * sqrtm_psd(C0i)
 
         return S_r_root, C0_list
 
@@ -861,12 +862,11 @@ class WaSSAf():
         iter = 0
         while delta >= self.epsilon and iter < self.max_iters:
             iter += 1
-            Sw_root = np.real(scipy.linalg.sqrtm(Sw))
+            Sw_root = sqrtm_psd(Sw)
             Sw_root_inv = np.linalg.inv(Sw_root)
             Ti = np.zeros((D, D))
             for C0i in C0_list:
-                Ti += Sw_root_inv @ np.real(
-                    scipy.linalg.sqrtm(Sw_root @ C0i @ Sw_root)) @ Sw_root_inv
+                Ti += Sw_root_inv @ sqrtm_psd(Sw_root @ C0i @ Sw_root) @ Sw_root_inv
             Ti = Ti / self.n_windows
             Snew = Ti @ Sw @ Ti
             delta = np.linalg.norm(Sw - Snew)
@@ -892,9 +892,9 @@ class WaSSAf():
             # only through the mu_i mu_i^T term)
             Xc = Xi - np.mean(Xi, axis=0)
             C0i = (1/(Ti - 1)) * (Xc.T @ Xc)
-            C0i_root = scipy.linalg.sqrtm(C0i)
+            C0i_root = sqrtm_psd(C0i)
 
-            inner_term = scipy.linalg.sqrtm(C0i_root @ Sw @ C0i_root)
+            inner_term = sqrtm_psd(C0i_root @ Sw @ C0i_root)
             S += np.outer(mu_i, mu_i) + C0i + Sw - 2 * inner_term
 
         return S
@@ -928,8 +928,10 @@ class WaSSAf():
         # whiten the data
         Xw = pca_white.transform(X)
 
-        # windows of at least 2 samples for the window covariances
-        check_n_windows(self.n_windows, X.shape[0], min_length=2)
+        # windows of at least D + 1 samples, so that the window covariances,
+        # and so their Frechet mean (which Algorithm 1 inverts), are 
+        # nonsingular
+        check_n_windows(self.n_windows, X.shape[0], min_length=X.shape[1] + 1)
 
         # get matrix S
         S = self._compute_S(Xw)
@@ -1070,7 +1072,9 @@ class WaSSAr():
             # only through the mu_i mu_i^T term)
             Xc = Xi - np.mean(Xi, axis=0)
             C0i = (1/(Ti - 1)) * (Xc.T @ Xc)
-            S_r_root += (1/self.n_windows) * scipy.linalg.sqrtm(C0i)
+            # (sqrtm_psd gives the real, symmetric square root of a
+            # covariance matrix, even a singular one)
+            S_r_root += (1/self.n_windows) * sqrtm_psd(C0i)
 
         # Construct matrix S
         S = np.zeros((D, D))
@@ -1085,7 +1089,7 @@ class WaSSAr():
             Xc = Xi - np.mean(Xi, axis=0)
             C0i = (1/(Ti - 1)) * (Xc.T @ Xc)
 
-            inner_term = scipy.linalg.sqrtm(C0i) - S_r_root
+            inner_term = sqrtm_psd(C0i) - S_r_root
             S += np.outer(mu_i, mu_i) + inner_term @ inner_term.T
 
         return S

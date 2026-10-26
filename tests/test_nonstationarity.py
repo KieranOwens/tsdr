@@ -184,3 +184,32 @@ def test_assa_truthy_nonstationary_sets_eigvals(variance_sources):
     b = ASSA(n_components=2, nonstationary=True).fit(X)
     np.testing.assert_array_equal(a.eigvals_, b.eigvals_)
     np.testing.assert_array_equal(a.linear_transform_, b.linear_transform_)
+
+
+@pytest.mark.parametrize("method", [WaSSAf, WaSSAr])
+def test_wassa_is_real_with_singular_window_covariances(method):
+    """A channel that is constant in half of the windows makes their
+    covariances singular, for which scipy.linalg.sqrtm returns complex values
+    (and WaSSAf and WaSSAr used to fail); the symmetric square root keeps the
+    computation real."""
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(400, 4)) * np.linspace(1, 3, 400)[:, None]
+    X[:200, 3] = 0.0
+    model = method(n_components=2, n_windows=10).fit(X)
+    Y = model.transform(X)
+    assert np.isrealobj(model.linear_transform_) and np.isrealobj(Y)
+    assert np.all(np.isfinite(Y))
+
+
+def test_wassar_is_real_with_short_windows():
+    """Windows with fewer samples than channels have singular covariances."""
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(40, 6)) * np.linspace(1, 3, 40)[:, None]
+    Y = WaSSAr(n_components=2, n_windows=8).fit_transform(X)
+    assert np.isrealobj(Y) and np.all(np.isfinite(Y))
+
+
+def test_wassaf_needs_windows_longer_than_n_features():
+    rng = np.random.default_rng(0)
+    with pytest.raises(ValueError, match="n_windows"):
+        WaSSAf(n_windows=8).fit(rng.normal(size=(40, 6)))
