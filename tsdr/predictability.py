@@ -209,13 +209,14 @@ class PrCA():
 
     p: int
         The number of time steps (Xt, Xt-1, ...) used to predict the future
-        time point Xt+lag.
+        time point Xt+lag. Must be 1 for model='diff'.
         Default: 1.
 
     model: str
         Specify the predictive model with options 'diff', 'linear_reg', and
-        'kernel_ridge'. 'diff' uses naive differencing and is equivalent to
-        Slow Feature Analysis (SFA) for lag=1 (with whiten=True). 
+        'kernel_ridge'. 'diff' uses naive differencing, i.e., the prediction
+        errors Xt+lag - Xt, and is equivalent to Slow Feature Analysis (SFA)
+        for lag=1. 
         'linear_reg' uses multivariate linear regression. 'kernel_ridge' uses
         kernel ridge regression. Both models predict all variables at time
         t+lag from the previous p time steps of all variables.
@@ -264,10 +265,15 @@ class PrCA():
             raise ValueError(f"Unknown model '{self.model}'. Options are "
                              "'diff', 'linear_reg', and 'kernel_ridge'.")
 
-        # simple differencing (equivalent to SFA)
+        # simple differencing over the time lag, X_{t+lag} - X_t, i.e., the
+        # prediction X_{t+lag} ~ X_t (equivalent to SFA for lag=1)
         if self.model == 'diff':
 
-            E = X[1:,:] - X[:-1,:]
+            if self.p != 1:
+                raise ValueError(f"model='diff' predicts X_t+lag from X_t only, "
+                                 f"so p must be 1 (got p={self.p}).")
+
+            E = X[self.lag:,:] - X[:-self.lag,:]
 
         else:
 
