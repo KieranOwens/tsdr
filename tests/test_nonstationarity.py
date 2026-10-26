@@ -7,7 +7,7 @@ import scipy.stats
 from sklearn.exceptions import ConvergenceWarning
 
 from tsdr._whitening import fit_whitening
-from tsdr.nonstationarity import (ASSA, SSAsave, SSAcor, BSSnonstat,
+from tsdr.nonstationarity import (ASSA, SSAsir, SSAsave, SSAcor, BSSnonstat,
                                   WaSSAf, WaSSAr)
 
 from helpers import corr2, random_mix
@@ -213,3 +213,20 @@ def test_wassaf_needs_windows_longer_than_n_features():
     rng = np.random.default_rng(0)
     with pytest.raises(ValueError, match="n_windows"):
         WaSSAf(n_windows=8).fit(rng.normal(size=(40, 6)))
+
+
+WINDOW_METHODS = [ASSA, SSAsir, SSAsave, SSAcor, WaSSAf, WaSSAr]
+
+
+@pytest.mark.parametrize("method", WINDOW_METHODS)
+def test_window_methods_warn_when_samples_are_dropped(method):
+    """The windows have n_samples // n_windows samples each, so with 1003
+    samples and 10 windows the last 3 samples are not used, with a warning
+    (and with 1000 samples, no warning)."""
+    import warnings
+    X = np.random.default_rng(0).normal(size=(1003, 3))
+    with pytest.warns(UserWarning, match="last 3 samples are not used"):
+        method(n_windows=10).fit(X)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        method(n_windows=10).fit(X[:1000])

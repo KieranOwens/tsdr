@@ -17,7 +17,8 @@ from sklearn.exceptions import ConvergenceWarning
 from sklearn.utils import check_random_state
 
 from ._linalg import largest_entry_signs, sqrtm_psd
-from ._validation import check_input, check_lag, check_n_windows
+from ._validation import (check_input, check_lag, check_n_windows,
+                          warn_if_samples_dropped)
 from ._whitening import fit_whitening
 
 ###############################################################################
@@ -52,6 +53,8 @@ class ASSA():
     n_windows: int
         The number of contiguous windows used for the approximation of Gaussian
         KL divergence.
+        The windows have n_samples // n_windows samples each, so the last
+        n_samples % n_windows samples are not used (with a UserWarning).
         Default: 10.
 
     nonstationary: bool
@@ -140,6 +143,9 @@ class ASSA():
 
         # windows of at least 2 samples for the window covariances
         check_n_windows(self.n_windows, X.shape[0], min_length=2)
+
+        # warn if the last n_samples % n_windows samples are not used
+        warn_if_samples_dropped(X.shape[0], self.n_windows, 'ASSA')
 
         # get matrix S
         S = self._compute_S(Xw)
@@ -246,6 +252,8 @@ class SSAsir():
 
     n_windows: int
         The number of contiguous windows used for computing means.
+        The windows have n_samples // n_windows samples each, so the last
+        n_samples % n_windows samples are not used (with a UserWarning).
         Default: 10.
 
     nonstationary: bool
@@ -316,6 +324,9 @@ class SSAsir():
 
         # windows of at least 1 sample for the window means
         check_n_windows(self.n_windows, X.shape[0], min_length=1)
+
+        # warn if the last n_samples % n_windows samples are not used
+        warn_if_samples_dropped(X.shape[0], self.n_windows, 'SSAsir')
 
         # get matrix Mm
         Mm = self._compute_Mm(Xw)
@@ -415,6 +426,8 @@ class SSAsave():
 
     n_windows: int
         The number of contiguous windows used for computing covariance.
+        The windows have n_samples // n_windows samples each, so the last
+        n_samples % n_windows samples are not used (with a UserWarning).
         Default: 10.
 
     nonstationary: bool
@@ -490,6 +503,9 @@ class SSAsave():
 
         # windows of at least 2 samples for the window covariances
         check_n_windows(self.n_windows, X.shape[0], min_length=2)
+
+        # warn if the last n_samples % n_windows samples are not used
+        warn_if_samples_dropped(X.shape[0], self.n_windows, 'SSAsave')
 
         # get matrix Mv
         Mv = self._compute_Mv(Xw)
@@ -594,6 +610,8 @@ class SSAcor():
     n_windows: int
         The number of contiguous windows used for computing time-lagged 
         autocorrelation.
+        The windows have n_samples // n_windows samples each, so the last
+        n_samples % n_windows samples are not used (with a UserWarning).
         Default: 10.
 
     nonstationary: bool
@@ -678,6 +696,9 @@ class SSAcor():
         # windows of at least lag + 2 samples for the window autocovariances
         check_lag(self.lag, X.shape[0])
         check_n_windows(self.n_windows, X.shape[0], min_length=self.lag + 2)
+
+        # warn if the last n_samples % n_windows samples are not used
+        warn_if_samples_dropped(X.shape[0], self.n_windows, 'SSAcor')
 
         # get matrix Mtau
         Mtau = self._compute_Mtau(Xw)
@@ -778,6 +799,8 @@ class WaSSAf():
     n_windows: int
         The number of contiguous windows used for the approximation of 
         Wasserstein distance.
+        The windows have n_samples // n_windows samples each, so the last
+        n_samples % n_windows samples are not used (with a UserWarning).
         Default: 10.
 
     epsilon: float
@@ -933,6 +956,9 @@ class WaSSAf():
         # nonsingular
         check_n_windows(self.n_windows, X.shape[0], min_length=X.shape[1] + 1)
 
+        # warn if the last n_samples % n_windows samples are not used
+        warn_if_samples_dropped(X.shape[0], self.n_windows, 'WaSSAf')
+
         # get matrix S
         S = self._compute_S(Xw)
 
@@ -1032,6 +1058,8 @@ class WaSSAr():
     n_windows: int
         The number of contiguous windows used for the approximation of 
         Wasserstein distance.
+        The windows have n_samples // n_windows samples each, so the last
+        n_samples % n_windows samples are not used (with a UserWarning).
         Default: 10.
 
     nonstationary: bool
@@ -1125,6 +1153,9 @@ class WaSSAr():
 
         # windows of at least 2 samples for the window covariances
         check_n_windows(self.n_windows, X.shape[0], min_length=2)
+
+        # warn if the last n_samples % n_windows samples are not used
+        warn_if_samples_dropped(X.shape[0], self.n_windows, 'WaSSAr')
 
         # get matrix S
         S = self._compute_S(Xw)
