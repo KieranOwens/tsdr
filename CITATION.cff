@@ -1,7 +1,3 @@
-# DRAFT for Kieran Owens to check before it is relied on: drafted from the
-# citation in the README (the TechRxiv preprint). Please check the authors
-# (and add ORCIDs), the version and the release date, and update
-# preferred-citation once the article is published.
 cff-version: 1.2.0
 message: "If you use this software, please cite the article below."
 title: "tsdr: Time-Series Dimension Reduction"
@@ -9,7 +5,12 @@ type: software
 authors:
   - family-names: Owens
     given-names: Kieran S.
+    orcid: "https://orcid.org/0000-0002-5803-9501"
+  - family-names: Fulcher
+    given-names: Ben D.
+    orcid: "https://orcid.org/0000-0002-3003-4055"
 version: "0.11"
+date-released: "2026-10-26"
 license: MIT
 repository-code: "https://github.com/KieranOwens/tsdr"
 url: "https://pypi.org/project/tsdr/"
