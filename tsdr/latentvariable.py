@@ -5,10 +5,13 @@
 # LDS - Latent linear dynamical system
 # DFA - Dynamic Factor Analysis
 
+import warnings
+
 import numpy as np
 import scipy.linalg
 from scipy.linalg import pinv
 from sklearn.decomposition import PCA
+from sklearn.exceptions import ConvergenceWarning
 from sklearn.utils import check_random_state
 
 from ._validation import check_input, check_n_components
@@ -48,8 +51,15 @@ class LDS():
         Default: 1.
 
     max_iter: int
-        The maximum number of iterations for the EM algorithm.
+        The number of iterations of the EM algorithm (EM always runs for 
+        max_iter iterations).
         Default: 50.
+
+    tol: float
+        A ConvergenceWarning is raised if the relative change in the 
+        output/observation matrix C in the last EM iteration, 
+        ||C_new - C|| / ||C||, exceeds tol. It does not affect the result.
+        Default: 1e-3.
 
     constrain_A_identity: bool
         If True, the latent state transition dynamics matrix A is constrained
@@ -84,10 +94,11 @@ class LDS():
     """
 
     def __init__(self, n_components=1, max_iter=50, constrain_A_identity=False, whiten=True,
-                 random_state=None, init='autocorrelation'):
+                 random_state=None, init='autocorrelation', tol=1e-3):
 
         self.n_components = n_components
         self.max_iter = max_iter
+        self.tol = tol
         self.constrain_A_identity = constrain_A_identity
         self.whiten = whiten
         self.random_state = random_state
@@ -273,11 +284,22 @@ class LDS():
         V0 = np.eye(d)              # Initial latent state covariance matrix
 
         # EM iterations
+        change = np.inf
         for _ in range(self.max_iter):
+            C_previous = C
             # E step
             Ex, Exx, Exxm1 = self._E_step(Y, A, Q, C, R, mu0, V0)
             # M step
             A, Q, C, R, mu0, V0 = self._M_step(Y, Ex, Exx, Exxm1)
+            # relative change in C in this iteration
+            change = np.linalg.norm(C - C_previous) / np.linalg.norm(C_previous)
+
+        if change > self.tol:
+            warnings.warn(f"{type(self).__name__} may not have converged in "
+                          f"max_iter={self.max_iter} EM iterations (relative "
+                          f"change in C in the last iteration {change:.2e} > "
+                          f"tol={self.tol}); consider increasing max_iter.",
+                          ConvergenceWarning)
 
         # Latent linear dynamical system parameters
         self.A = A
@@ -375,8 +397,15 @@ class DFA(LDS):
         Default: 1.
 
     max_iter: int
-        The maximum number of iterations for the EM algorithm.
+        The number of iterations of the EM algorithm (EM always runs for 
+        max_iter iterations).
         Default: 50.
+
+    tol: float
+        A ConvergenceWarning is raised if the relative change in the 
+        output/observation matrix C in the last EM iteration exceeds tol 
+        (see LDS). It does not affect the result.
+        Default: 1e-3.
 
     whiten: bool
         If True, the input time series is whitened before fitting the model.
@@ -397,9 +426,9 @@ class DFA(LDS):
     """
 
     def __init__(self, n_components=1, max_iter=50, whiten=True, 
-                 random_state=None, init='autocorrelation'):
+                 random_state=None, init='autocorrelation', tol=1e-3):
 
         # an LDS with the transition matrix constrained to the identity
         super().__init__(n_components=n_components, max_iter=max_iter, 
                          constrain_A_identity=True, whiten=whiten, 
-                         random_state=random_state, init=init)
+                         random_state=random_state, init=init, tol=tol)

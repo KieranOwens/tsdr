@@ -193,7 +193,8 @@ class BioSFA():
         Default: 1.
 
     n_iters: int
-        The number of iterations of gradient descent-ascent.
+        The number of iterations of gradient descent-ascent (the algorithm 
+        always runs for n_iters iterations).
         Default: 1000.
 
     lr: float
@@ -212,6 +213,12 @@ class BioSFA():
         global NumPy random state is used.
         Default: None.
 
+    tol: float
+        A ConvergenceWarning is raised if the relative change in the weights
+        W or M in the last iteration (e.g., ||W_new - W|| / ||W||) exceeds 
+        tol. It does not affect the result.
+        Default: 1e-4.
+
     Attributes
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
@@ -224,13 +231,14 @@ class BioSFA():
     """
 
     def __init__(self, n_components=1, n_iters=1000, lr=0.1, tau=1.0,
-                 random_state=None):
+                 random_state=None, tol=1e-4):
 
         self.n_components = n_components
         self.n_iters = n_iters
         self.lr = lr
         self.tau = tau
         self.random_state = random_state
+        self.tol = tol
 
     def fit(self, X, y=None):
         """Fit the model to X
@@ -276,12 +284,23 @@ class BioSFA():
 
         # offline gradient descent-ascent, Lipshutz et al. (2020) eqs. 13-15
         # (W here is the transpose of W in the paper; Ybar = M^-1 W Xbar)
+        change = np.inf
         for _ in range(self.n_iters):
             Minv = np.linalg.inv(M)
             dW = 2 * (C0_bar @ W @ Minv - C0 @ W)                 # eq. 14
             dM = (Minv @ W.T @ C0_bar @ W @ Minv - M) / self.tau   # eq. 15
+            # relative change in W and M in this iteration
+            change = max(np.linalg.norm(self.lr * dW) / np.linalg.norm(W),
+                         np.linalg.norm(self.lr * dM) / np.linalg.norm(M))
             W += self.lr * dW
             M += self.lr * dM
+
+        if change > self.tol:
+            warnings.warn(f"BioSFA may not have converged in n_iters="
+                          f"{self.n_iters} iterations (relative change in the "
+                          f"weights in the last iteration {change:.2e} > "
+                          f"tol={self.tol}); consider increasing n_iters.",
+                          ConvergenceWarning)
 
         # neural output y = M^-1 W x, i.e. the projection V = W M^-1, which
         # satisfies the whitening constraint V^T C0 V = I at the fixed point

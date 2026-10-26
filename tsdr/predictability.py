@@ -410,6 +410,13 @@ class DiCCA():
         The time lag over which AR predictability is maximised.
         Default: 5.
 
+    tol: float
+        The alternating estimation of w and beta always runs for 100 
+        iterations for each component. A ConvergenceWarning is raised if the
+        change in the AR weights beta in the last iteration, 
+        ||beta_new - beta||, exceeds tol. It does not affect the result.
+        Default: 1e-6.
+
     Attributes
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
@@ -417,10 +424,11 @@ class DiCCA():
         to the input time series X.
     """
 
-    def __init__(self, n_components=1, s=5):
+    def __init__(self, n_components=1, s=5, tol=1e-6):
 
         self.n_components = n_components
         self.s = s
+        self.tol = tol
 
     def fit(self, X, y=None):
         """Fit the model to X
@@ -474,6 +482,7 @@ class DiCCA():
 
             # iteratively optimize transformation w and AR weights beta
             for _ in range(100):
+                beta_previous = beta
                 # prediction (Ubeta) and prediction error (Utilde)
                 Ubeta = sum([U_list[i]*beta[i] for i in range(self.s)])
                 Utilde = Us - Ubeta
@@ -484,6 +493,14 @@ class DiCCA():
                 Ts = np.concatenate([(U_list[i] @ w).reshape(-1,1) 
                                      for i in range(self.s)], axis=1)
                 beta = np.linalg.pinv(Ts.T @ Ts) @ Ts.T @ Us @ w
+
+            # change in the AR weights beta in the last iteration
+            change = np.linalg.norm(beta - beta_previous)
+            if change > self.tol:
+                warnings.warn(f"DiCCA may not have converged in 100 iterations "
+                              f"for component {nb + 1} (change in the AR weights "
+                              f"in the last iteration {change:.2e} > tol="
+                              f"{self.tol}).", ConvergenceWarning)
 
             # weights r such that t = Xd @ r (since U = Xd V^T diag(1/S))
             r = V.T @ (w / S)
@@ -1393,7 +1410,15 @@ class DCA():
             V = np.linalg.qr(result.x.reshape(D, d))[0]
             pi = self._predictive_information(V, Sigma)[0]
             if best is None or pi > best[1]:
-                best = (V, pi)
+                best = (V, pi, result)
+
+        # warn if the optimisation that gave the kept solution did not 
+        # report success
+        best_result = best[2]
+        if not best_result.success:
+            warnings.warn(f"DCA: the L-BFGS optimisation of the kept solution "
+                          f"did not converge ({best_result.message}).",
+                          ConvergenceWarning)
 
         self.predictive_information_ = best[1]
 

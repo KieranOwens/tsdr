@@ -1145,7 +1145,8 @@ class BSSnonstat():
         Default: 1.
 
     max_iters: int
-        The number of iterations used during optimisation.
+        The number of iterations of the fixed point algorithm (it always runs
+        for max_iters iterations).
         Default: 100.
 
     n_init: int
@@ -1160,6 +1161,12 @@ class BSSnonstat():
         global NumPy random state is used.
         Default: None.
 
+    tol: float
+        A ConvergenceWarning is raised if the change in a kept projection 
+        vector w (up to sign) in the last iteration, 1 - |w_new^T w|, 
+        exceeds tol. It does not affect the result.
+        Default: 1e-6.
+
     Attributes
     ----------
     linear_transform_: ndarray, shape (n_features, n_components)
@@ -1168,13 +1175,14 @@ class BSSnonstat():
     """
 
     def __init__(self, n_components=1, lag=1, max_iters=100, random_state=None,
-                 n_init=5):
+                 n_init=5, tol=1e-6):
 
         self.n_components = n_components
         self.lag = lag
         self.max_iters = max_iters
         self.random_state = random_state
         self.n_init = n_init
+        self.tol = tol
 
     def fit(self, X, y=None):
         """Fit the model to X
@@ -1223,7 +1231,7 @@ class BSSnonstat():
             # fixed point iteration from n_init random initialisations, 
             # keeping the projection vector with the largest cross-cumulant 
             # magnitude (the iteration can converge to local optima)
-            best_w, best_cum = None, -np.inf
+            best_w, best_cum, best_change = None, -np.inf, np.inf
             for _ in range(self.n_init):
 
                 # initialise the linear transformation vector, orthogonal to
@@ -1233,7 +1241,9 @@ class BSSnonstat():
                 w = w / np.linalg.norm(w)
 
                 # Hyvarinen (2001) equation (7)
+                change = np.inf
                 for _ in range(self.max_iters):
+                    w_previous = w
 
                     # E{z_t (w^T z_t) (w^T z_t-lag)^2} and
                     # E{z_t-lag (w^T z_t-lag) (w^T z_t)^2}
@@ -1249,6 +1259,9 @@ class BSSnonstat():
                     w = w - W @ (W.T @ w)
                     w = w / np.linalg.norm(w)
 
+                    # change in w (up to sign) in this iteration
+                    change = 1 - abs(w.T @ w_previous)[0, 0]
+
                 # cross-cumulant cum(y_t^2, y_t-lag^2), Hyvarinen (2001) 
                 # equation (4)
                 y0 = X0 @ w
@@ -1256,7 +1269,14 @@ class BSSnonstat():
                 cum = (np.mean(y0**2 * ylag**2) - np.mean(y0**2) * np.mean(ylag**2)
                        - 2 * np.mean(y0 * ylag)**2)
                 if abs(cum) > best_cum:
-                    best_w, best_cum = w, abs(cum)
+                    best_w, best_cum, best_change = w, abs(cum), change
+
+            if best_change > self.tol:
+                warnings.warn(f"BSSnonstat may not have converged in max_iters="
+                              f"{self.max_iters} iterations (change in the "
+                              f"projection vector in the last iteration "
+                              f"{best_change:.2e} > tol={self.tol}); consider "
+                              "increasing max_iters.", ConvergenceWarning)
 
             # collect projection vectors
             W = np.concatenate([W, best_w], axis=1)

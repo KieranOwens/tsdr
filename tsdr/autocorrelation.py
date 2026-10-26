@@ -537,8 +537,16 @@ class CSA():
         Default: 2.
 
     max_iters: int
-        The number of iterations of the joint low-rank approximation.
+        The number of iterations of the joint low-rank approximation (the 
+        algorithm always runs for max_iters iterations).
         Default: 1000.
+
+    tol: float
+        A ConvergenceWarning is raised if the change in the subspace spanned
+        by the components in the last iteration, ||W W^T - W_old W_old^T|| 
+        for the orthonormal matrix W, exceeds tol. It does not affect the 
+        result.
+        Default: 1e-6.
 
     Attributes
     ----------
@@ -547,11 +555,12 @@ class CSA():
         to the input time series X.
     """
 
-    def __init__(self, n_components=1, lag=2, max_iters=1000):
+    def __init__(self, n_components=1, lag=2, max_iters=1000, tol=1e-6):
 
         self.n_components = n_components
         self.lag = lag
         self.max_iters = max_iters
+        self.tol = tol
 
     def _get_lags(self):
         """The list of lags: 1, ..., lag for an integer lag (including NumPy 
@@ -623,7 +632,9 @@ class CSA():
         W = eigvecs[:,-1:-self.n_components-1:-1]
 
         # iteratively approximate W
+        change = np.inf
         for _ in range(self.max_iters):
+            W_previous = W
             C = Ctensor[0]
             if self.n_components==1:
                 outer = np.outer(W, W).T
@@ -634,6 +645,15 @@ class CSA():
                 R += C @ outer @ C.T + C.T @ outer @ C
             _, eigvecs = np.linalg.eigh(R)
             W = eigvecs[:,-1:-self.n_components-1:-1]
+            # change in the subspace spanned by W (whatever the signs of its
+            # columns) in this iteration
+            change = np.linalg.norm(W @ W.T - W_previous @ W_previous.T)
+
+        if change > self.tol:
+            warnings.warn(f"CSA may not have converged in max_iters="
+                          f"{self.max_iters} iterations (change in the subspace "
+                          f"in the last iteration {change:.2e} > tol={self.tol}); "
+                          "consider increasing max_iters.", ConvergenceWarning)
 
         # get linear transformation
         transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
