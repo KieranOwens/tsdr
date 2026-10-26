@@ -6,6 +6,7 @@
 # DIG - Dynamical Information Geometry
 # NLSA - Nonlinear Laplacian Spectral Analysis
 
+import numbers
 import warnings
 
 import numpy as np
@@ -448,9 +449,23 @@ class DIG():
         eigenvals, eigenvecs = np.linalg.eigh(K)
         eigenvals_sorted = eigenvals.argsort()[::-1]
         idxs = eigenvals_sorted[:self.n_components]
-        Lambda = np.diag(eigenvals[idxs])
+        Lambda = eigenvals[idxs]
         W = eigenvecs[:, idxs]
-        return (np.sqrt(Lambda) @ W.T).T
+
+        # the information distances need not be Euclidean, so K can have 
+        # negative eigenvalues, whose square roots are not real: set them to
+        # zero (so that those components are zero), with a warning unless 
+        # they are zero up to rounding (as K always has a zero eigenvalue)
+        tol = 1e-10 * np.max(np.abs(eigenvals))
+        if np.any(Lambda < -tol):
+            warnings.warn(f"Only {np.sum(eigenvals > tol)} of the {N} eigenvalues "
+                          "of the multidimensional scaling are positive, so "
+                          f"{np.sum(Lambda < -tol)} of the {self.n_components} "
+                          "components are set to zero; consider reducing "
+                          "n_components.", RuntimeWarning)
+        Lambda = np.clip(Lambda, 0.0, None)
+
+        return W * np.sqrt(Lambda)
 
     def fit(self, X, y=None):
         """Fit the model to X
@@ -607,7 +622,7 @@ class NLSA():
 
     n_eigenfunctions: int
         The number of Laplacian eigenfunctions (l), which must be at least 
-        n_components.
+        n_components and at most n_samples - q.
         Default: 20.
 
     whiten: bool
@@ -656,7 +671,19 @@ class NLSA():
         """
 
         X = check_input(X)
-        _, D = X.shape
+        T, D = X.shape
+
+        # the embedding has T - q + 1 rows, of which the s = T - q with a 
+        # preceding row are used, so that 1 <= q <= T - 2 leaves s >= 2 
+        # samples, and there are at most s eigenfunctions
+        if not isinstance(self.q, numbers.Integral) or not 1 <= self.q <= T - 2:
+            raise ValueError(f"q must be an integer between 1 and n_samples - 2 "
+                             f"= {T - 2} (got {self.q!r}).")
+        if (not isinstance(self.n_eigenfunctions, numbers.Integral) 
+                or not 1 <= self.n_eigenfunctions <= T - self.q):
+            raise ValueError(f"n_eigenfunctions must be an integer between 1 and "
+                             f"n_samples - q = {T - self.q} (got "
+                             f"{self.n_eigenfunctions!r}).")
 
         # the temporal modes are the right singular vectors of the 
         # (q * D) x n_eigenfunctions linear operator A
@@ -683,6 +710,19 @@ class NLSA():
         xi = np.linalg.norm(E[1:,:] - E[:-1,:], axis=1)
         E = E[1:,:]
         s = E.shape[0]
+
+        # a repeated embedded sample has zero local velocity, by which the 
+        # kernel would divide: use the smallest positive velocity instead,
+        # with a warning
+        if np.all(xi == 0):
+            raise ValueError("The time-lagged embedding of X is constant (all "
+                             "local velocities are zero).")
+        if np.any(xi == 0):
+            warnings.warn(f"{np.sum(xi == 0)} embedded samples repeat the "
+                          "previous one (zero local velocity); their velocity "
+                          f"is set to the smallest positive one, {xi[xi > 0].min():.3g}.",
+                          RuntimeWarning)
+            xi = np.where(xi == 0, xi[xi > 0].min(), xi)
 
         # Gaussian kernel on the b nearest neighbours of each sample, scaled 
         # by the local velocities, and symmetrised, Algorithm S2 lines 6-22

@@ -276,3 +276,48 @@ def test_nlsa_with_complete_eigenfunction_basis():
     eigvals = np.linalg.eigvalsh(E.T @ (model.measure_[:, None] * E))[::-1]
     np.testing.assert_allclose(model.singular_values_, np.sqrt(eigvals[:5]),
                                rtol=1e-8)
+
+
+def test_dig_mds_sets_negative_eigenvalues_to_zero_with_warning():
+    """Non-Euclidean distances give negative MDS eigenvalues, whose
+    components are set to zero (rather than NaN), with a warning."""
+    D = np.array([[0.0, 1.0, 3.0], [1.0, 0.0, 1.0], [3.0, 1.0, 0.0]])
+    with pytest.warns(RuntimeWarning, match="set to zero"):
+        Y = DIG(10, 1, n_components=3)._mds(D)
+    assert np.all(np.isfinite(Y))
+    np.testing.assert_allclose(Y[:, 1:], 0, atol=1e-8)
+    # the first component is the classical MDS solution for the positive
+    # eigenvalue, 1.5 * (-1, 0, 1) up to sign
+    np.testing.assert_allclose(np.abs(Y[:, 0]), [1.5, 0, 1.5], atol=1e-8)
+
+
+def test_dig_mds_of_euclidean_distances_recovers_the_points():
+    """For Euclidean distances, MDS recovers the (centred) points up to a
+    rotation, without warnings."""
+    import warnings
+    rng = np.random.default_rng(0)
+    P = rng.normal(size=(20, 2))
+    D = np.linalg.norm(P[:, None] - P[None], axis=2)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        Y = DIG(10, 1, n_components=2)._mds(D)
+    np.testing.assert_allclose(np.linalg.norm(Y[:, None] - Y[None], axis=2), D,
+                               atol=1e-10)
+
+
+def test_nlsa_repeated_samples_give_finite_modes_with_warning():
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(300, 3))
+    X[100:110] = X[100]
+    with pytest.warns(RuntimeWarning, match="zero local velocity"):
+        Y = NLSA(n_components=2, q=3).fit_transform(X)
+    assert np.all(np.isfinite(Y))
+
+
+@pytest.mark.parametrize("kwargs", [dict(q=3, n_eigenfunctions=298),
+                                    dict(q=0), dict(q=299), dict(q=2.5),
+                                    dict(n_eigenfunctions=0)])
+def test_nlsa_invalid_q_or_n_eigenfunctions_raises(kwargs):
+    X = np.random.default_rng(0).normal(size=(300, 3))
+    with pytest.raises(ValueError, match="q|n_eigenfunctions"):
+        NLSA(**kwargs).fit(X)
