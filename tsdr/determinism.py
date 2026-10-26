@@ -22,7 +22,7 @@ class DyCA():
     Dynamical Component Analysis (DyCA).
 
     DyCA is a TSDR method for extracting the most deterministic components from 
-    a multivariate time seriese (i.e., that can be represented as trajectories 
+    a multivariate time series (i.e., that can be represented as trajectories 
     of a linear ordinary differential equation).
 
     The steps involved in DyCA are: (1) compute the temporal derivative of the 

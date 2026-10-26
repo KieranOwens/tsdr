@@ -246,7 +246,7 @@ class DIG():
     The steps involved in DIG are: (1) compute a square matrix of covariance
     distances between time-series segments, (2) apply an adaptive Gaussian 
     (i.e., RBF) kernel to the distance matrix to obtain W, (3) normalise the 
-    rows of M to yield a Markovian matrix of transition probabilities, 
+    columns of W to yield a Markovian matrix M of transition probabilities, 
     (4) compute a time scale tau using von Neumann Entropy (VNE), (5) compute 
     the tau-step diffusion probabilities M^tau, (6) compute information 
     distances D for M^tau, and (7) apply multidimensional scaling (MDS) to D.
@@ -394,13 +394,16 @@ class DIG():
         n_windows = (T - self.window) // self.step + 1
         check_n_components(self.n_components, max_components=n_windows)
 
-        # copute covariance distances
+        # compute covariance distances
         W = self._cov_distance_matrix(X)
 
         # Gaussian kernel weights matrix
         W = self._adaptive_gaussian_kernel(W)
 
-        # normalise rows
+        # normalise the columns: since W is symmetric, W.sum(axis=1) are also
+        # the column sums, so each column of M sums to one (column j holds 
+        # the transition probabilities from window j, as compared by 
+        # _information_distance)
         M = W / W.sum(axis=1)
 
         # timescale via Von Neumann entropy

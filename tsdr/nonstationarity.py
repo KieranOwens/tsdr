@@ -295,10 +295,10 @@ class SSAsir():
         # windows of at least 1 sample for the window means
         check_n_windows(self.n_windows, X.shape[0], min_length=1)
 
-        # get matrix S
+        # get matrix Mm
         Mm = self._compute_Mm(Xw)
 
-        # eigendecomposition of S
+        # eigendecomposition of Mm
         eigvals, eigvecs = np.linalg.eigh(Mm)
         eigvecs_sorted = eigvecs[:,np.argsort(eigvals)]
 
@@ -455,10 +455,10 @@ class SSAsave():
         # windows of at least 2 samples for the window covariances
         check_n_windows(self.n_windows, X.shape[0], min_length=2)
 
-        # get matrix S
+        # get matrix Mv
         Mv = self._compute_Mv(Xw)
 
-        # eigendecomposition of S
+        # eigendecomposition of Mv
         eigvals, eigvecs = np.linalg.eigh(Mv)
         eigvecs_sorted = eigvecs[:,np.argsort(eigvals)]
 
@@ -525,7 +525,7 @@ class SSAcor():
     """
     Stationary Subspace Analysis using time-lagged autocorrelation (SSAcor) 
 
-    SSAcoris a TSDR method for extracting the most nonstationary (or 
+    SSAcor is a TSDR method for extracting the most nonstationary (or 
     stationary) components from a multivariate time series (i.e., for which 
     variation in the time-lagged autocorrelation across time series segments is 
     maximised or minimised).
@@ -629,10 +629,10 @@ class SSAcor():
         check_lag(self.lag, X.shape[0])
         check_n_windows(self.n_windows, X.shape[0], min_length=self.lag + 2)
 
-        # get matrix S
+        # get matrix Mtau
         Mtau = self._compute_Mtau(Xw)
 
-        # eigendecomposition of S
+        # eigendecomposition of Mtau
         eigvals, eigvecs = np.linalg.eigh(Mtau)
         eigvecs_sorted = eigvecs[:,np.argsort(eigvals)]
 
@@ -721,7 +721,7 @@ class WaSSAf():
 
     n_windows: int
         The number of contiguous windows used for the approximation of 
-        Wassersteindistance.
+        Wasserstein distance.
         Default: 10.
 
     epsilon: float
@@ -958,7 +958,7 @@ class WaSSAr():
 
     n_windows: int
         The number of contiguous windows used for the approximation of 
-        Wassersteindistance.
+        Wasserstein distance.
         Default: 10.
 
     nonstationary: bool
@@ -1298,8 +1298,9 @@ class BSSnonstat():
         Returns
         -------
         X_new: ndarray, shape (n_samples, n_components)
-            A (possibly multivariate) time series of components ordered by 
-            nonstationarity of the variance.
+            A (possibly multivariate) time series of components, in the 
+            order in which they are found by deflation (they are not sorted 
+            by the nonstationarity of their variance).
         """
 
         X = check_input(X)
@@ -1320,8 +1321,9 @@ class BSSnonstat():
         Returns
         -------
         X_new: ndarray, shape (n_samples, n_components)
-            A (possibly multivariate) time series of components ordered by 
-            nonstationarity of the variance.
+            A (possibly multivariate) time series of components, in the 
+            order in which they are found by deflation (they are not sorted 
+            by the nonstationarity of their variance).
         """
 
         X = check_input(X, self.n_components)

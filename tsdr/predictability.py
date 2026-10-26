@@ -50,7 +50,7 @@ class TLPC():
     eigenvectors corresponding to the least eigenvalues, and (5) apply the
     eigenvector linear transformation to the whitened data.
 
-    Reference: Creutzik & Sprekeler (2008) Predictive coding and the slowness
+    Reference: Creutzig & Sprekeler (2008) Predictive coding and the slowness
     principle, Neural Comp.
 
     Parameters
@@ -319,14 +319,14 @@ class PrCA():
 
         X = check_input(X, self.n_components)
 
-        # fit a PCA whitening model
+        # fit a PCA whitening model and whiten the data
         pca_white = fit_whitening(X)
         X = pca_white.transform(X)
 
-        # whiten the data
+        # prediction errors of the predictive model
         E = self._get_prediction_errors(X)
 
-        # fit a PCA model to the derivatives
+        # fit a PCA model to the prediction errors
         pca_pred_error = PCA().fit(E)
 
         # get linear transformation

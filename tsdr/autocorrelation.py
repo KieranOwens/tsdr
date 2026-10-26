@@ -519,7 +519,7 @@ class CSA():
     corresponding to the largest eigenvalues, and (5) apply the eigenvector 
     linear transformation to the whitened data.
 
-    Reference: Theis (2010) Colored subspace analysis: dimenion reduction
+    Reference: Theis (2010) Colored subspace analysis: dimension reduction
     based on a signal's autocorrelation structure, IEEE Transactions on 
     Circuits and Systems.
 
@@ -753,7 +753,10 @@ class sPCA_dwt():
         Default: True
 
     method: str
-        Whether to use PCA or SVD. Options: 'pca' or 'svd'.
+        Whether to use PCA or SVD. Options: 'pca' or 'svd'. Note: the two 
+        options currently give the same result, since the component scores 
+        are always computed by SVD of the centred coefficients (which equals
+        PCA up to the signs of the components).
         Default: 'pca'.
     """
 

@@ -32,7 +32,7 @@ class LDS():
     according to a linear transition model and the observations are
     generated from the latent state through a linear observation model.
 
-    This implementaiton is based on the Expectation-Maximization (EM)
+    This implementation is based on the Expectation-Maximization (EM)
     algorithm for fitting the parameters of the linear dynamical system.
     This involves iteratively estimating the latent state and its
     covariance using the Kalman filter, and then updating the model
@@ -139,7 +139,7 @@ class LDS():
 
         # ----- Kalman smoothing -----
         x_smooth = np.zeros((T, d))     # smoothed mean, x_t^T
-        V_smooth = np.zeros((T, d, d))  # smothed covariance, V_t^T
+        V_smooth = np.zeros((T, d, d))  # smoothed covariance, V_t^T
         Cov = np.zeros((T - 1, d, d))   # V_{t, t-1}^T
 
         # initialise the smoothed estimates
