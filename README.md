@@ -97,6 +97,8 @@ A few methods differ from the common pattern:
 - `sPCA_dwt` and the three diffusion methods return component time series of the fitted data rather than a linear map of the features, so they have `fit_transform` but no out-of-sample `transform` (`sPCA_dwt.transform` raises `NotImplementedError`, and the diffusion methods have no `transform` method).
   `DMcov` and `DIG` embed sliding windows of the time series (of length `window`, every `step` samples), so they return one row per window; `NLSA` embeds the time series with `q` lags, so it returns `n_samples - q` rows (for time points `q` onwards).
 
+- The sign of a component is arbitrary for most methods (e.g., that of an eigenvector), so it is fixed by a convention: the entry of largest magnitude of each column of `linear_transform_` (or, for `sPCA_dwt` and the diffusion methods, the value of largest magnitude of each component) is positive. `DMD` fixes the phase and sign of its (complex) components in its own way (see its docstring), and the signs of the `LDS` and `DFA` components are not fixed.
+
 ## Citation
 
 If you use this software, please read and cite the open-access article:

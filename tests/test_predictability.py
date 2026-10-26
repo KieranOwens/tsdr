@@ -367,6 +367,20 @@ def test_pts_alternating_steps_decrease_prediction_error(three_ar_sources):
     assert np.all(np.diff(errors) <= 1e-12)
 
 
+def test_pts_ar_coefs_are_the_var_model_of_the_components(three_ar_sources):
+    """ar_coefs_ are the least-squares VAR(M) coefficients of the returned
+    components (with their signs), y_t ~ sum_i A_i y_{t-i}."""
+    _, X = three_ar_sources
+    M = 2
+    model = PTS(n_components=2, M=M).fit(X)
+    Y = model.transform(X)
+    T = len(Y)
+    R = np.column_stack([Y[M - i:T - i] for i in range(1, M + 1)])
+    coef = np.linalg.lstsq(R, Y[M:], rcond=None)[0]
+    A = np.stack(np.split(coef, M)).transpose(0, 2, 1)
+    np.testing.assert_allclose(model.ar_coefs_, A, atol=1e-10)
+
+
 def test_pts_keeps_previous_w_if_prediction_error_increases(three_ar_sources):
     """If an update of w increases the prediction error, PTS keeps the
     previous w (and stops), rather than the worse one."""

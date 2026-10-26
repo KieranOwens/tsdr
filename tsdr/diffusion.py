@@ -14,7 +14,7 @@ import scipy.spatial.distance
 from kneed import KneeLocator
 from sklearn.neighbors import NearestNeighbors
 
-from ._linalg import sqrtm_psd
+from ._linalg import largest_entry_signs, sqrtm_psd
 from ._validation import check_input, check_n_components, check_window
 from ._whitening import fit_whitening
 
@@ -284,6 +284,10 @@ class DMcov():
             # first eigenvector (eigenvalue 0) is the trivial one
             self.components = eigvecs[:,1:1+self.n_components]
 
+        # fix the arbitrary sign of each component so that its value of
+        # largest magnitude is positive
+        self.components = self.components * largest_entry_signs(self.components)
+
         return self
 
     def fit_transform(self, X, y=None):
@@ -507,6 +511,10 @@ class DIG():
 
         self.components = self._mds(D)
 
+        # fix the arbitrary sign of each component so that its value of
+        # largest magnitude is positive
+        self.components = self.components * largest_entry_signs(self.components)
+
         return self
 
     def fit_transform(self, X, y=None):
@@ -712,6 +720,10 @@ class NLSA():
         _, sigma, Vt = np.linalg.svd(A, full_matrices=False)
         self.singular_values_ = sigma[:self.n_components]
         self.components = phi @ Vt.T[:,:self.n_components]
+
+        # fix the arbitrary sign of each component so that its value of
+        # largest magnitude is positive
+        self.components = self.components * largest_entry_signs(self.components)
 
         return self
 

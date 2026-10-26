@@ -18,6 +18,7 @@ from sklearn.decomposition import PCA
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.utils import check_random_state
 
+from ._linalg import largest_entry_signs
 from ._validation import check_input
 from ._whitening import fit_whitening
 
@@ -112,6 +113,11 @@ class SFA():
         transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
         transform2 = pca_diff.components_.T
         self.linear_transform_ = (transform1 @ transform2)[:,-1:-(self.n_components+1):-1]
+
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
 
         return self
 
@@ -338,6 +344,11 @@ class BioSFA():
         transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
         transform2 = V @ R
         self.linear_transform_ = transform1 @ transform2
+
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
 
         return self
 
@@ -619,6 +630,11 @@ class ISFA():
         transform2 = Q[:,order]
         self.linear_transform_ = transform1 @ transform2
 
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
+
         return self
 
     def transform(self, X):
@@ -843,6 +859,11 @@ class SICA():
         transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
         transform2 = W[:,order]
         self.linear_transform_ = transform1 @ transform2
+
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
 
         return self
 

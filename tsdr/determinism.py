@@ -8,6 +8,7 @@
 import numpy as np
 import scipy.linalg
 
+from ._linalg import largest_entry_signs
 from ._validation import check_input, check_n_components
 from ._whitening import fit_whitening
 
@@ -150,6 +151,11 @@ class DyCA():
             self.linear_transform_ = (transform1 @ W)[:,:self.n_components]
         else:
             raise ValueError(f'No generalised eigenvalue fulfills threshold > {self.eig_threshold}.')
+
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
 
         return self
 

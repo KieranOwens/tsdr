@@ -87,14 +87,11 @@ SHIFT_INVARIANT = [n for n in list(LINEAR) + list(LATENT) if n != "DCA"]
 
 @pytest.mark.parametrize("name", SHIFT_INVARIANT)
 def test_components_do_not_depend_on_the_mean(data, name):
-    """Adding a constant to the data does not change the components (up to
-    their arbitrary signs)."""
+    """Adding a constant to the data does not change the components."""
     make = {**LINEAR, **LATENT}[name]
     Y = make().fit_transform(data)
     Y_shifted = make().fit_transform(data + 1000.0)
-    signs = np.sign(np.sum(Y * Y_shifted, axis=0))
-    np.testing.assert_allclose(Y_shifted * signs, Y, rtol=1e-5,
-                               atol=1e-5 * np.abs(Y).max())
+    np.testing.assert_allclose(Y_shifted, Y, rtol=1e-5, atol=1e-5 * np.abs(Y).max())
 
 
 def test_dca_subspace_does_not_depend_on_the_mean(data):

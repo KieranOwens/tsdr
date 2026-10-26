@@ -17,6 +17,7 @@ import scipy
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.utils import check_random_state
 
+from ._linalg import largest_entry_signs
 from ._validation import check_input, check_lag, check_n_windows
 from ._whitening import fit_whitening
 
@@ -163,6 +164,11 @@ class ASSA():
         else:
             transform2 = eigvecs_sorted[:,:self.n_components]
         self.linear_transform_ = (transform1 @ transform2)
+
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
 
         return self
 
@@ -326,6 +332,11 @@ class SSAsir():
         else:
             transform2 = eigvecs_sorted[:,:self.n_components]
         self.linear_transform_ = (transform1 @ transform2)
+
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
 
         return self
 
@@ -495,6 +506,11 @@ class SSAsave():
         else:
             transform2 = eigvecs_sorted[:,:self.n_components]
         self.linear_transform_ = (transform1 @ transform2)
+
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
 
         return self
 
@@ -678,6 +694,11 @@ class SSAcor():
         else:
             transform2 = eigvecs_sorted[:,:self.n_components]
         self.linear_transform_ = (transform1 @ transform2)
+
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
 
         return self
 
@@ -925,6 +946,11 @@ class WaSSAf():
             transform2 = eigvecs_sorted[:,:self.n_components]
         self.linear_transform_ = (transform1 @ transform2)
 
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
+
         return self
 
     def transform(self, X):
@@ -1110,6 +1136,11 @@ class WaSSAr():
         else:
             transform2 = eigvecs_sorted[:,:self.n_components]
         self.linear_transform_ = (transform1 @ transform2)
+
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
 
         return self
 
@@ -1346,6 +1377,11 @@ class BSSnonstat():
         transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
         transform2 = W
         self.linear_transform_ = (transform1 @ transform2)
+
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
 
         return self
 

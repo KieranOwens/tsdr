@@ -19,7 +19,7 @@ from sklearn.exceptions import ConvergenceWarning
 from sklearn.utils import check_random_state
 import pywt
 
-from ._linalg import sqrtm_psd
+from ._linalg import largest_entry_signs, sqrtm_psd
 from ._validation import check_input, check_lag
 from ._whitening import fit_whitening
 
@@ -116,6 +116,11 @@ class TICA():
         transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
         transform2 = eigvecs[:,-1:-(self.n_components+1):-1]
         self.linear_transform_ = (transform1 @ transform2)
+
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
 
         return self
 
@@ -253,6 +258,11 @@ class TMCA():
         transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
         transform2 = U[:,:self.n_components]
         self.linear_transform_ = (transform1 @ transform2)
+
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
 
         return self
 
@@ -442,6 +452,13 @@ class TCCA():
         transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
         self.linear_transform_ = transform1 @ C00_inv_root @ U[:,:self.n_components]
         self.right_transform_ = transform1 @ C11_inv_root @ Vt.T[:,:self.n_components]
+
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive (and the same for its right
+        # canonical variate, so that the canonical correlations stay positive)
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
+        self.right_transform_ = self.right_transform_ * signs
 
         return self
 
@@ -707,6 +724,11 @@ class TCCA_Stiefel:
         else:
             self.linear_transform_ = W
 
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
+
         return self
 
     def transform(self, X):
@@ -920,6 +942,11 @@ class CSA():
         transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
         self.linear_transform_ = transform1 @ W
 
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
+
         return self
 
     def transform(self, X):
@@ -1076,6 +1103,10 @@ class sPCA_dwt():
 
         # the inverse DWT has an extra sample for odd T
         self.components = self.components[:T]
+
+        # fix the arbitrary sign of each component so that its value of
+        # largest magnitude is positive
+        self.components = self.components * largest_entry_signs(self.components)
 
         return self
 

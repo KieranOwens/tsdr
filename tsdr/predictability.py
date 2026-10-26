@@ -21,6 +21,7 @@ from sklearn.decomposition import PCA
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.utils import check_random_state
 
+from ._linalg import largest_entry_signs
 from ._validation import check_input
 from ._whitening import fit_whitening
 
@@ -136,6 +137,11 @@ class TLPC():
         transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
         transform2 = eigvecs[:,:self.n_components]
         self.linear_transform_ = transform1 @ transform2
+
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
 
         return self
 
@@ -352,6 +358,11 @@ class PrCA():
         transform2 = pca_pred_error.components_.T
         self.linear_transform_ = (transform1 @ transform2)[:,-1:-(self.n_components+1):-1]
         
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
+
         return self
 
     def transform(self, X):
@@ -544,6 +555,11 @@ class DiCCA():
                 deflation = deflation @ (np.eye(D) - np.outer(r, p))
 
         self.linear_transform_ = np.concatenate(W, axis=1)
+
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
 
         return self
 
@@ -809,6 +825,11 @@ class ForeCA():
         transform2 = W[:,order]
         self.linear_transform_ = transform1 @ transform2
 
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
+
         return self
 
     def transform(self, X):
@@ -981,6 +1002,11 @@ class PFA():
         transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
         transform2 = eigvecs[:,:self.n_components]
         self.linear_transform_ = transform1 @ transform2
+
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
 
         return self
 
@@ -1266,6 +1292,13 @@ class PTS():
         transform2 = W
         self.linear_transform_ = transform1 @ transform2
 
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive, and change the VAR coefficients of
+        # the components to match (S A_i S, for S = diag(signs))
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
+        self.ar_coefs_ = self.ar_coefs_ * np.outer(signs, signs)
+
         return self
 
     def transform(self, X):
@@ -1500,6 +1533,11 @@ class DCA():
         transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
         transform2 = best[0]
         self.linear_transform_ = transform1 @ transform2
+
+        # fix the arbitrary sign of each component so that its loading of
+        # largest magnitude is positive
+        signs = largest_entry_signs(self.linear_transform_)
+        self.linear_transform_ = self.linear_transform_ * signs
 
         return self
 
