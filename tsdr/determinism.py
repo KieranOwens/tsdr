@@ -6,7 +6,7 @@
 # DMD - Dynamic Mode Decomposition
 
 import numpy as np
-from scipy.linalg import eig
+import scipy.linalg
 
 from ._validation import check_input, check_n_components
 from ._whitening import fit_whitening
@@ -60,8 +60,8 @@ class DyCA():
         from X before applying linear_transform_.
 
     eigvals_: ndarray, shape (n_eigvals,)
-        The generalised eigenvalues that are <= 1, ordered by decreasing 
-        modulus (eigenvalues > 1 arise from the singularity of C0 and are 
+        The (real) generalised eigenvalues that are <= 1, in decreasing 
+        order (eigenvalues > 1 arise from the singularity of C0 and are 
         excluded, so n_eigvals <= n_features).
     """
 
@@ -114,27 +114,39 @@ class DyCA():
         C1 = (Xdot.T @ X) / T
         C2 = (Xdot.T @ Xdot) / T
 
-        # generalised eigenvalue problem
+        # generalised eigenvalue problem LHS w = lambda RHS w. LHS is 
+        # symmetric positive semi-definite (symmetrised here, as it is only 
+        # symmetric up to rounding) and RHS is the positive definite 
+        # covariance of the derivative, so this is a symmetric-definite 
+        # problem with real eigenvalues, which scipy.linalg.eigh returns in 
+        # ascending order
         LHS = C1 @ np.linalg.pinv(C0) @ C1.T
+        LHS = 0.5 * (LHS + LHS.T)
         RHS = C2
-        eigvals, eigvecs = eig(LHS, RHS)
-        abseigvals = np.real(np.abs(eigvals))
-        eigvals, eigvecs = eigvals[np.argsort(-abseigvals)], eigvecs[:,np.argsort(-abseigvals)]
-        self.eigvals_ = eigvals[np.array(eigvals <= 1)]
+        eigvals, eigvecs = scipy.linalg.eigh(LHS, RHS)
+
+        # order by decreasing eigenvalue, and scale the eigenvectors to unit
+        # length (eigh scales them so that w^T RHS w = 1)
+        eigvals, eigvecs = eigvals[::-1], eigvecs[:,::-1]
+        eigvecs = eigvecs / np.linalg.norm(eigvecs, axis=0)
 
         # exclude eigvals > 1 due to singularity of C0
+        valid = eigvals <= 1
+        self.eigvals_ = eigvals[valid]
 
-        if self.eig_threshold == None:
-            eigvecs = eigvecs[:,np.array(eigvals <= 1)]
+        # select the eigenvectors (all valid ones, or those whose eigenvalues
+        # exceed the threshold)
+        if self.eig_threshold is None:
+            selected = valid
         else:
-            eigvecs = eigvecs[:,np.array(eigvals > self.eig_threshold) &  np.array(eigvals <= 1)]
+            selected = valid & (eigvals > self.eig_threshold)
+        eigvecs = eigvecs[:,selected]
 
         # return transformed data or else generate an error
         transform1 = pca_white.components_.T / np.sqrt(pca_white.explained_variance_)
         if eigvecs.shape[1] > 0:
             C3 = np.linalg.pinv(C1) @ C2
-            W = np.concatenate((eigvecs, 
-                                np.apply_along_axis(lambda x: np.matmul(C3,x), 0, eigvecs)),axis=1)
+            W = np.concatenate((eigvecs, C3 @ eigvecs), axis=1)
             self.linear_transform_ = (transform1 @ W)[:,:self.n_components]
         else:
             raise ValueError(f'No generalised eigenvalue fulfills threshold > {self.eig_threshold}.')
