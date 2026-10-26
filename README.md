@@ -1,6 +1,6 @@
 <h1 align="center"><em>tsdr</em>: Time-Series Dimension Reduction</h1>
 
-<p align="center"><img src="img/tsdr_categories.png" height="300" alt="The seven categories of time-series dimension reduction methods"/></p>
+<p align="center"><img src="https://raw.githubusercontent.com/KieranOwens/tsdr/main/img/tsdr_categories.png" height="300" alt="The seven categories of time-series dimension reduction methods"/></p>
 
 <p align="center">
   <a href="https://doi.org/10.36227/techrxiv.176409662.29359239/v1"><img src="https://img.shields.io/badge/paper-TechRxiv%20(2025)-informational" alt="Paper"/></a>
@@ -24,7 +24,7 @@ The example below also uses `matplotlib`.
 
 ## Quick start
 
-Every method is a class with a scikit-learn-style `fit`, `transform` and `fit_transform`.
+Every method is a class with a scikit-learn-style `fit` and `fit_transform`, and all but four also have `transform` (see [the exceptions below](#available-methods)).
 Here we extract a slow sinusoid from a linear mixture of noise channels using slow feature analysis (SFA):
 
 ```python
@@ -39,7 +39,8 @@ import matplotlib.pyplot as plt
 z = np.sin(np.linspace(0, 4*np.pi, 1000))
 # multichannel noise
 D = 5
-noise = np.random.normal(scale=1.0, size=((len(z), D-1)))
+rng = np.random.default_rng(0)
+noise = rng.normal(scale=1.0, size=((len(z), D-1)))
 # linear mixing
 A = scipy.stats.ortho_group.rvs(D, random_state=1)
 X = np.concatenate([z.reshape(-1,1), noise], axis=1) @ A
@@ -61,7 +62,17 @@ axs[D].set_xlabel('Time')
 plt.tight_layout()
 ```
 
-<p align="center"><img src="img/sfa_example.png" height="600" alt="SFA recovers the slow sinusoid from five mixed channels"/></p>
+<p align="center"><img src="https://raw.githubusercontent.com/KieranOwens/tsdr/main/img/sfa_example.png" height="600" alt="SFA recovers the slow sinusoid from five mixed channels"/></p>
+
+## Input requirements
+
+- `X` is a 2-D array of shape `(n_samples, n_features)`, with time along the rows: a NumPy array or a pandas DataFrame (which is converted to an array).
+  A 1-D time series must be reshaped to one column, e.g., `x.reshape(-1, 1)`.
+- `X` must not contain NaN or infinite values, which raise a `ValueError`.
+- The methods that whiten the data need more time points than features (`n_samples > n_features`) and a nonsingular covariance matrix, i.e., no constant or linearly dependent channels.
+- `n_components` must be between 1 and `n_features` for most methods (some methods, such as the diffusion methods and `DyCA`, allow more).
+- The `transform` of the linear methods applies the learned linear map to `X` without first subtracting the mean of the training data, so each component carries a constant offset.
+  Subtract the column means of the output if you need zero-mean components.
 
 ## Available methods
 
@@ -83,7 +94,8 @@ The figure at the top summarizes these categories.
 A few methods differ from the common pattern:
 
 - Methods with a random initialization or random order of updates (`BioSFA`, `ISFA`, `SICA`, `ForeCA`, `DCA`, `BSSnonstat`, and `LDS` and `DFA` with `init='random'`) accept a `random_state` argument for reproducible results; `TCCA_Stiefel` uses a `seed` argument. `LDS` and `DFA` are initialised deterministically by default (`init='autocorrelation'`). `BSSnonstat` and `DCA` run their optimisation from several random initialisations (`n_init`, default 5) and keep the best solution, as `ForeCA` does (`n_starts`).
-- The diffusion methods are nonlinear, so they have `fit_transform` but no separate `transform`. `DMcov` and `DIG` embed sliding windows of the time series (of length `window`, every `step` samples), so they return one row per window; `NLSA` embeds the time series with `q` lags, so it returns `n_samples - q` rows (for time points `q` onwards).
+- `sPCA_dwt` and the three diffusion methods return component time series of the fitted data rather than a linear map of the features, so they have `fit_transform` but no out-of-sample `transform` (`sPCA_dwt.transform` raises `NotImplementedError`, and the diffusion methods have no `transform` method).
+  `DMcov` and `DIG` embed sliding windows of the time series (of length `window`, every `step` samples), so they return one row per window; `NLSA` embeds the time series with `q` lags, so it returns `n_samples - q` rows (for time points `q` onwards).
 
 ## Citation
 
@@ -103,4 +115,4 @@ If you use this software, please read and cite the open-access article:
 
 ## License
 
-_tsdr_ is released under the [MIT License](LICENSE.txt).
+_tsdr_ is released under the [MIT License](https://github.com/KieranOwens/tsdr/blob/main/LICENSE.txt).
