@@ -168,7 +168,7 @@ def test_isfa_independent_of_pair_order(equal_lag1_sources):
     b = ISFA(n_components=2, random_state=1).fit(X)
     assert np.all(subspace_cos(a.linear_transform_[:, :1],
                                b.linear_transform_[:, :1]) > 0.9999)
-    np.testing.assert_allclose(a.objective_, b.objective_, rtol=1e-5)
+    np.testing.assert_allclose(a.objective_, b.objective_, rtol=1e-6)
 
 
 @pytest.fixture(scope="module")
