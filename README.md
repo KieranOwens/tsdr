@@ -1,12 +1,21 @@
-<h1 align="center"><em>tsdr</em>: Time-Series Dimension Reduction</h1>
+<p align="center">
+  <picture>
+    <source srcset="https://raw.githubusercontent.com/KieranOwens/tsdr/main/img/tsdr_logo_darkmode.png" media="(prefers-color-scheme: dark)">
+    <img src="https://raw.githubusercontent.com/KieranOwens/tsdr/main/img/tsdr_logo.png" alt="tsdr logo" height="200"/>
+  </picture>
+</p>
 
-<p align="center"><img src="https://raw.githubusercontent.com/KieranOwens/tsdr/main/img/tsdr_categories.png" height="300" alt="The seven categories of time-series dimension reduction methods"/></p>
+<h1 align="center"><em>tsdr</em>: Time-Series Dimension Reduction</h1>
 
 <p align="center">
   <a href="https://doi.org/10.36227/techrxiv.176409662.29359239/v1"><img src="https://img.shields.io/badge/paper-TechRxiv%20(2025)-informational" alt="Paper"/></a>
-  <a href="https://pypi.org/project/tsdr/"><img src="https://img.shields.io/pypi/v/tsdr?label=PyPI" alt="PyPI version"/></a>
+  <a href="https://doi.org/10.5281/zenodo.23661377"><img src="https://zenodo.org/badge/1086045556.svg" alt="DOI"/></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"/></a>
-  <a href="https://doi.org/10.5281/zenodo.23661377"><img src="https://zenodo.org/badge/1086045556.svg" alt="DOI"></a>
+  <a href="https://github.com/KieranOwens/tsdr/actions/workflows/tests.yml"><img src="https://github.com/KieranOwens/tsdr/actions/workflows/tests.yml/badge.svg" alt="Tests"/></a>
+  <br>
+  <a href="https://pypi.org/project/tsdr/"><img src="https://img.shields.io/pypi/v/tsdr?label=PyPI" alt="PyPI version"/></a>
+  <a href="https://www.python.org"><img src="https://img.shields.io/badge/Python-3.10%20|%203.11%20|%203.12%20|%203.13-3776AB.svg?logo=python&logoColor=white" alt="Python 3.10 | 3.11 | 3.12 | 3.13"/></a>
+  <a href="https://pepy.tech/projects/tsdr"><img src="https://static.pepy.tech/personalized-badge/tsdr?period=total&units=INTERNATIONAL_SYSTEM&left_color=GREY&right_color=BLUE&left_text=PyPI%20downloads" alt="tsdr PyPI downloads"/></a>
 </p>
 
 _tsdr_ is a Python package of time-series dimension reduction (TSDR) methods: algorithms that reduce multivariate data to a few components by exploiting temporal structure.
@@ -19,13 +28,22 @@ The package implements 30 methods from the seven categories of TSDR methods defi
 pip install tsdr
 ```
 
-The package is on [PyPI](https://pypi.org/project/tsdr/) and requires Python 3.8 or later.
+The package is on [PyPI](https://pypi.org/project/tsdr/) and requires Python 3.10 or later.
 It depends on `numpy`, `scipy`, `scikit-learn`, `pywavelets` and `kneed`.
 The example below also uses `matplotlib`.
 
+To develop _tsdr_ and run its tests:
+
+```bash
+git clone https://github.com/KieranOwens/tsdr.git
+cd tsdr
+pip install -e ".[test]"
+pytest
+```
+
 ## Quick start
 
-Every method is a class with a scikit-learn-style `fit` and `fit_transform`, and all but four also have `transform` (see [the exceptions below](#available-methods)).
+Every method is a class with a scikit-learn-style `fit` and `fit_transform`, and all but four also have `transform` (see [Usage notes](#usage-notes)).
 Here we extract a slow sinusoid from a linear mixture of noise channels using slow feature analysis (SFA):
 
 ```python
@@ -65,20 +83,15 @@ plt.tight_layout()
 
 <p align="center"><img src="https://raw.githubusercontent.com/KieranOwens/tsdr/main/img/sfa_example.png" height="600" alt="SFA recovers the slow sinusoid from five mixed channels"/></p>
 
-## Input requirements
-
-- `X` is a 2-D array of shape `(n_samples, n_features)`, with time along the rows: a NumPy array or a pandas DataFrame (which is converted to an array).
-  A 1-D time series must be reshaped to one column, e.g., `x.reshape(-1, 1)`.
-- `X` must not contain NaN or infinite values, which raise a `ValueError`.
-- The methods that whiten the data need more time points than features (`n_samples > n_features`) and a nonsingular covariance matrix, i.e., no constant or linearly dependent channels.
-- `n_components` must be between 1 and `n_features` for most methods (some methods, such as the diffusion methods and `DyCA`, allow more).
-- The `transform` of the linear methods applies the learned linear map to `X` without first subtracting the mean of the training data, so each component carries a constant offset.
-  Subtract the column means of the output if you need zero-mean components.
-
 ## Available methods
 
-The methods are grouped by the aspect of temporal structure that they exploit.
-Each is imported from the module named in the first column, e.g., `from tsdr.slowness import SFA`.
+The methods are grouped into seven categories, summarized in the figure below.
+The first five (a–e) extract components based on different aspects of temporal structure: slowness, autocorrelation, predictability, determinism and non-stationarity.
+The last two (f–g) share a common methodology: diffusion-based and latent-variable methods.
+
+<p align="center"><img src="https://raw.githubusercontent.com/KieranOwens/tsdr/main/img/tsdr_categories.png" height="300" alt="The seven categories of time-series dimension reduction methods"/></p>
+
+Each method is imported from the module named in the second column, e.g., `from tsdr.slowness import SFA`.
 
 | Category | Module | Methods |
 |---|---|---|
@@ -90,21 +103,44 @@ Each is imported from the module named in the first column, e.g., `from tsdr.slo
 | <sub>(f) Diffusion</sub> | <sub>`tsdr.diffusion`</sub> | <sub>`DMcov` (diffusion maps using covariance distance)</sub><br><sub>`DIG` (dynamical information geometry)</sub><br><sub>`NLSA` (nonlinear Laplacian spectral analysis)</sub> |
 | <sub>(g) Latent variable</sub> | <sub>`tsdr.latentvariable`</sub> | <sub>`LDS` (latent linear dynamical system)</sub><br><sub>`DFA` (dynamic factor analysis)</sub> |
 
-The figure at the top summarizes these categories.
+## Usage notes
 
-A few methods differ from the common pattern:
+### Input requirements
 
-- Methods with a random initialization or random order of updates (`BioSFA`, `ISFA`, `SICA`, `TCCA_Stiefel`, `ForeCA`, `DCA`, `BSSnonstat`, and `LDS` and `DFA` with `init='random'`) accept a `random_state` argument, which defaults to 0 so that results are reproducible (pass `random_state=None` to use the global NumPy random state; the old `seed` argument of `TCCA_Stiefel` still works but is deprecated). `LDS` and `DFA` are initialised deterministically by default (`init='autocorrelation'`). `BSSnonstat` and `DCA` run their optimisation from several random initialisations (`n_init`, default 5) and keep the best solution, as `ForeCA` does (`n_starts`).
-- `sPCA_dwt` and the three diffusion methods return component time series of the fitted data rather than a linear map of the features, so they have `fit_transform` but no out-of-sample `transform` (`sPCA_dwt.transform` raises `NotImplementedError`, and the diffusion methods have no `transform` method).
-  `DMcov` and `DIG` embed sliding windows of the time series (of length `window`, every `step` samples), so they return one row per window; `NLSA` embeds the time series with `q` lags, so it returns `n_samples - q` rows (for time points `q` onwards).
+- `X` is a 2-D array of shape `(n_samples, n_features)`, with time along the rows: a NumPy array or a pandas DataFrame (which is converted to an array).
+  A 1-D time series must be reshaped to one column, e.g., `x.reshape(-1, 1)`.
+- `X` must not contain NaN or infinite values, which raise a `ValueError`.
+- The methods that whiten the data need more time points than features (`n_samples > n_features`) and a nonsingular covariance matrix, i.e., no constant or linearly dependent channels.
+- `n_components` must be between 1 and `n_features` for most methods (some methods, such as the diffusion methods and `DyCA`, allow more).
 
-- The sign of a component is arbitrary for most methods (e.g., that of an eigenvector), so it is fixed by a convention: the entry of largest magnitude of each column of `linear_transform_` (or, for `sPCA_dwt` and the diffusion methods, the value of largest magnitude of each component) is positive. `DMD` fixes the phase and sign of its (complex) components in its own way (see its docstring), and the signs of the `LDS` and `DFA` components are not fixed.
+### Methods that differ from the common pattern
 
-## Citation
+- **Offsets.**
+  The `transform` of the linear methods applies the learned linear map to `X` without first subtracting the mean of the training data, so each component carries a constant offset.
+  Subtract the column means of the output if you need zero-mean components.
+- **No out-of-sample `transform`.**
+  `sPCA_dwt` and the three diffusion methods return component time series of the fitted data rather than a linear map of the features, so they have `fit_transform` but no out-of-sample `transform` (`sPCA_dwt.transform` raises `NotImplementedError`, and the diffusion methods have no `transform` method).
+  `DMcov` and `DIG` embed sliding windows of the time series (of length `window`, every `step` samples), so they return one row per window.
+  `NLSA` embeds the time series with `q` lags, so it returns `n_samples - q` rows (for time points `q` onwards).
+- **Reproducibility.**
+  Methods with a random initialization or random order of updates (`BioSFA`, `ISFA`, `SICA`, `TCCA_Stiefel`, `ForeCA`, `DCA`, `BSSnonstat`, and `LDS` and `DFA` with `init='random'`) accept a `random_state` argument, which defaults to 0 so that results are reproducible.
+  Pass `random_state=None` to use the global NumPy random state (the old `seed` argument of `TCCA_Stiefel` still works but is deprecated).
+  `LDS` and `DFA` are initialized deterministically by default (`init='autocorrelation'`).
+  `BSSnonstat` and `DCA` run their optimization from several random initializations (`n_init`, default 5) and keep the best solution, as `ForeCA` does (`n_starts`).
+- **Signs of components.**
+  The sign of a component is arbitrary for most methods (e.g., that of an eigenvector), so it is fixed by a convention: the entry of largest magnitude of each column of `linear_transform_` (or, for `sPCA_dwt` and the diffusion methods, the value of largest magnitude of each component) is positive.
+  `DMD` fixes the phase and sign of its (complex) components in its own way (see its docstring), and the signs of the `LDS` and `DFA` components are not fixed.
 
-If you use this software, please read and cite the open-access article:
+## Citing _tsdr_
 
-> Owens, K. S. & Fulcher, B. D. (2025). Time-series dimension reduction: a comprehensive review and conceptual unification of algorithms. _TechRxiv_. [doi:10.36227/techrxiv.176409662.29359239/v1](https://doi.org/10.36227/techrxiv.176409662.29359239/v1)
+If you use _tsdr_, please read and cite the open-access review:
+
+> K. S. Owens, B. D. Fulcher.
+> [Time-series dimension reduction: a comprehensive review and conceptual unification of algorithms](https://doi.org/10.36227/techrxiv.176409662.29359239/v1).
+> _TechRxiv_ (2025).
+
+<details>
+<summary>BibTeX</summary>
 
 ```bibtex
 @article{owens2025tsdr,
@@ -115,6 +151,16 @@ If you use this software, please read and cite the open-access article:
   doi     = {10.36227/techrxiv.176409662.29359239/v1}
 }
 ```
+
+</details>
+
+## Related software
+
+_tsdr_ is one of the [time-series analysis tools](https://time-series-features.gitbook.io/time-series-analysis-tools) from the [Dynamics and Neural Systems group](https://dynamicsandneuralsystems.github.io/), which also develops:
+
+- [_hctsa_](https://github.com/benfulcher/hctsa) and [_pyhctsa_](https://github.com/DynamicsAndNeuralSystems/pyhctsa): highly comparative time-series analysis, computing thousands of features from univariate time series.
+- [_catch22_](https://github.com/DynamicsAndNeuralSystems/catch22): 22 fast, high-performing time-series features.
+- [_pyspi_](https://github.com/DynamicsAndNeuralSystems/pyspi): hundreds of statistics of pairwise interactions from multivariate time series.
 
 ## License
 
