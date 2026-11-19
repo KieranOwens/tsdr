@@ -113,24 +113,6 @@ Each method is imported from the module named in the second column, e.g., `from 
 - The methods that whiten the data need more time points than features (`n_samples > n_features`) and a nonsingular covariance matrix, i.e., no constant or linearly dependent channels.
 - `n_components` must be between 1 and `n_features` for most methods (some methods, such as the diffusion methods and `DyCA`, allow more).
 
-### Methods that differ from the common pattern
-
-- **Offsets.**
-  The `transform` of the linear methods applies the learned linear map to `X` without first subtracting the mean of the training data, so each component carries a constant offset.
-  Subtract the column means of the output if you need zero-mean components.
-- **No out-of-sample `transform`.**
-  `sPCA_dwt` and the three diffusion methods return component time series of the fitted data rather than a linear map of the features, so they have `fit_transform` but no out-of-sample `transform` (`sPCA_dwt.transform` raises `NotImplementedError`, and the diffusion methods have no `transform` method).
-  `DMcov` and `DIG` embed sliding windows of the time series (of length `window`, every `step` samples), so they return one row per window.
-  `NLSA` embeds the time series with `q` lags, so it returns `n_samples - q` rows (for time points `q` onwards).
-- **Reproducibility.**
-  Methods with a random initialization or random order of updates (`BioSFA`, `ISFA`, `SICA`, `TCCA_Stiefel`, `ForeCA`, `DCA`, `BSSnonstat`, and `LDS` and `DFA` with `init='random'`) accept a `random_state` argument, which defaults to 0 so that results are reproducible.
-  Pass `random_state=None` to use the global NumPy random state (the old `seed` argument of `TCCA_Stiefel` still works but is deprecated).
-  `LDS` and `DFA` are initialized deterministically by default (`init='autocorrelation'`).
-  `BSSnonstat` and `DCA` run their optimization from several random initializations (`n_init`, default 5) and keep the best solution, as `ForeCA` does (`n_starts`).
-- **Signs of components.**
-  The sign of a component is arbitrary for most methods (e.g., that of an eigenvector), so it is fixed by a convention: the entry of largest magnitude of each column of `linear_transform_` (or, for `sPCA_dwt` and the diffusion methods, the value of largest magnitude of each component) is positive.
-  `DMD` fixes the phase and sign of its (complex) components in its own way (see its docstring), and the signs of the `LDS` and `DFA` components are not fixed.
-
 ## Citing _tsdr_
 
 If you use _tsdr_, please read and cite the open-access review:
