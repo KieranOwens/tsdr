@@ -154,14 +154,6 @@ If you use _tsdr_, please read and cite the open-access review:
 
 </details>
 
-## Related software
-
-_tsdr_ is one of the [time-series analysis tools](https://time-series-features.gitbook.io/time-series-analysis-tools) from the [Dynamics and Neural Systems group](https://dynamicsandneuralsystems.github.io/), which also develops:
-
-- [_hctsa_](https://github.com/benfulcher/hctsa) and [_pyhctsa_](https://github.com/DynamicsAndNeuralSystems/pyhctsa): highly comparative time-series analysis, computing thousands of features from univariate time series.
-- [_catch22_](https://github.com/DynamicsAndNeuralSystems/catch22): 22 fast, high-performing time-series features.
-- [_pyspi_](https://github.com/DynamicsAndNeuralSystems/pyspi): hundreds of statistics of pairwise interactions from multivariate time series.
-
 ## License
 
 _tsdr_ is released under the [MIT License](https://github.com/KieranOwens/tsdr/blob/main/LICENSE.txt).
